@@ -8,10 +8,12 @@ import {
   History,
   ListChecks,
   NotebookPen,
+  Orbit,
   Plus,
   Sun,
   Timer,
 } from "lucide-react";
+import SpaceCanvas from "@/components/space-canvas";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -65,6 +67,15 @@ type Reflection = {
   lesson: string | null;
   nextStartAction: string | null;
 };
+type DayProgress = {
+  date: string;
+  hasMission: boolean;
+  missionDone: boolean;
+  tasksDone: number;
+  tasksTotal: number;
+  focusMinutes: number;
+  reflected: boolean;
+};
 
 async function api(path: string, init?: RequestInit) {
   const res = await fetch(path, {
@@ -87,13 +98,16 @@ function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 }
 
-const DOT_COLORS = ["#f4570b", "#7c5cd6", "#2f9e6e", "#d6a72c", "#3e8fd6"];
+const DOT_COLORS = ["#f5b90d", "#8b7cf6", "#3ddc97", "#f472b6", "#4cc3ff"];
+const HUD = "font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground";
+const GLASS = "border-white/10 bg-card/80 shadow-xl shadow-black/40 backdrop-blur";
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [mission, setMission] = useState<Mission | null>(null);
   const [noMission, setNoMission] = useState(false);
+  const [progress, setProgress] = useState<DayProgress[]>([]);
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
@@ -151,6 +165,7 @@ export default function Home() {
       }
     }
     const recentList = (await api("/api/reflections?recent=7")) as Reflection[];
+    const week = (await api("/api/progress?days=7")) as DayProgress[];
     return {
       projects: list,
       project: active,
@@ -158,6 +173,7 @@ export default function Home() {
       noMission: noM,
       reflection: refl,
       recent: recentList,
+      progress: week,
     };
   }, []);
 
@@ -169,6 +185,7 @@ export default function Home() {
       noMission: boolean;
       reflection: Reflection | null;
       recent: Reflection[];
+      progress: DayProgress[];
     }) => {
       setProjects(s.projects);
       setProject(s.project);
@@ -176,6 +193,7 @@ export default function Home() {
       setNoMission(s.noMission);
       setReflection(s.reflection);
       setRecent(s.recent);
+      setProgress(s.progress);
       const key = s.reflection ? s.reflection.id : "none";
       if (refilledId.current !== key) {
         refilledId.current = key;
@@ -234,7 +252,7 @@ export default function Home() {
 
   const tasks = mission?.tasks ?? [];
   const openTasks = tasks.filter((t) => t.status !== "completed");
-  const doneTasks = tasks.filter((t) => t.status === "completed");
+  const completedTasks = tasks.filter((t) => t.status === "completed");
   const sessions = tasks.flatMap((t) => t.sessions);
   const doneSessions = sessions.filter((s) => s.status === "completed");
   const elapsedSec = running
@@ -248,7 +266,9 @@ export default function Home() {
     0
   );
   const taskProgress =
-    tasks.length === 0 ? 0 : Math.round((doneTasks.length / tasks.length) * 100);
+    tasks.length === 0
+      ? 0
+      : Math.round((completedTasks.length / tasks.length) * 100);
 
   // Yesterday's handoff: the newest past reflection that names a next action.
   const today = dayKey(new Date());
@@ -272,36 +292,41 @@ export default function Home() {
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
 
+  const maxWeekMinutes = Math.max(1, ...progress.map((d) => d.focusMinutes));
+
   const nav = [
     { id: "my-day", label: "My day", icon: Sun },
     { id: "tasks", label: "Tasks", icon: ListChecks },
     { id: "focus", label: "Focus", icon: Timer },
     { id: "reflection", label: "Notes", icon: NotebookPen },
+    { id: "progress", label: "Progress", icon: Orbit },
     { id: "history", label: "History", icon: History },
   ];
 
   return (
     <div className="min-h-screen">
+      <SpaceCanvas />
       <div className="mx-auto flex max-w-6xl items-start gap-4 p-4">
         {/* Sidebar */}
-        <aside className="sticky top-4 hidden w-56 shrink-0 flex-col gap-1 rounded-2xl bg-sidebar p-3 shadow-sm ring-1 ring-border md:flex">
+        <aside
+          className={`sticky top-4 hidden w-56 shrink-0 flex-col gap-1 rounded-2xl p-3 md:flex ${GLASS}`}
+        >
           <div className="flex items-center gap-2 px-2 py-2">
-            <span className="h-3 w-3 rounded-full bg-primary" />
+            <Orbit className="h-4 w-4 text-primary" />
             <p className="font-display text-lg font-semibold">FocusOS</p>
           </div>
+          <p className={HUD + " px-3 pt-1"}>Space / Gravity / Motion</p>
           {nav.map((n) => (
             <button
               key={n.id}
               onClick={() => scrollTo(n.id)}
-              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-sidebar-accent"
+              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-white/5"
             >
               <n.icon className="h-4 w-4 text-muted-foreground" />
               {n.label}
             </button>
           ))}
-          <p className="px-3 pt-3 text-xs font-medium text-muted-foreground">
-            Projects
-          </p>
+          <p className={HUD + " px-3 pt-3"}>Projects</p>
           {projects.map((p, i) => (
             <div
               key={p.id}
@@ -314,7 +339,7 @@ export default function Home() {
               <span className="truncate">{p.name}</span>
             </div>
           ))}
-          <div className="mt-2 flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-foreground/80">
+          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-foreground/80">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
             {calDate.toLocaleDateString(undefined, {
               month: "short",
@@ -327,30 +352,102 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* Main grid */}
+        {/* Main column */}
         <main className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
+          {/* Hero */}
+          <div className="flex flex-col gap-1 lg:col-span-3">
+            <p className={HUD + " text-primary"}>
+              Space&nbsp;&nbsp;/&nbsp;&nbsp;Gravity&nbsp;&nbsp;/&nbsp;&nbsp;Motion
+            </p>
+            <h1 className="font-display text-5xl font-semibold tracking-tight">
+              Today&apos;s <span className="text-primary">orbit</span>
+            </h1>
+            <p className="font-mono text-sm text-muted-foreground">
+              Small mass moves daily. Consistency builds the universe.
+            </p>
+          </div>
+
           {error && (
             <p className="rounded-2xl bg-destructive/10 px-4 py-2 text-sm text-destructive lg:col-span-3">
               {error}
             </p>
           )}
 
+          {/* Week progress strip */}
+          <Card id="progress" className={`lg:col-span-3 ${GLASS}`}>
+            <CardHeader className="pb-2">
+              <CardTitle className="font-display text-xl">This week</CardTitle>
+              <CardDescription className={HUD}>
+                Mass curves space · Gravity creates motion
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-7 gap-2">
+                {progress.map((d) => {
+                  const isToday = d.date === today;
+                  const label = new Date(d.date + "T00:00:00")
+                    .toLocaleDateString(undefined, { weekday: "narrow" });
+                  return (
+                    <div
+                      key={d.date}
+                      className={`flex flex-col items-center gap-1 rounded-xl px-1 py-2 ${
+                        isToday ? "bg-primary/10 ring-1 ring-primary/50" : "bg-white/[0.03]"
+                      }`}
+                    >
+                      <span className={HUD}>{label}</span>
+                      <span className="font-display text-lg font-semibold">
+                        {d.focusMinutes}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">min</span>
+                      <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{
+                            width: `${Math.round((d.focusMinutes / maxWeekMinutes) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="flex gap-1 pt-0.5">
+                        <span
+                          title={d.missionDone ? "Mission done" : d.hasMission ? "Mission open" : "No mission"}
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            d.missionDone
+                              ? "bg-primary"
+                              : d.hasMission
+                                ? "border border-primary"
+                                : "bg-white/15"
+                          }`}
+                        />
+                        <span
+                          title={d.reflected ? "Reflected" : "No reflection"}
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            d.reflected ? "bg-foreground/70" : "bg-white/15"
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Calendar */}
-          <Card className="shadow-sm">
+          <Card className={GLASS}>
             <CardHeader className="pb-2">
               <div className="flex items-baseline justify-between">
                 <CardTitle className="font-display text-xl">
                   {monthName}
                 </CardTitle>
-                <span className="text-xs text-muted-foreground">
-                  {calYear}
-                </span>
+                <span className={HUD}>{calYear}</span>
               </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground">
                 {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-                  <span key={i}>{d}</span>
+                  <span key={i} className="font-mono">
+                    {d}
+                  </span>
                 ))}
                 {cells.map((day, i) => {
                   if (day === null) return <span key={i} />;
@@ -381,55 +478,55 @@ export default function Home() {
           </Card>
 
           {/* My day summary */}
-          <Card id="my-day" className="shadow-sm">
+          <Card id="my-day" className={GLASS}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">My day</CardTitle>
-              <CardDescription>
+              <CardDescription className={HUD}>
                 {reflection?.energyLevel
-                  ? `Energy ${reflection.energyLevel}/5 · ${taskProgress}% tasks complete`
+                  ? `Energy ${reflection.energyLevel}/5 · ${taskProgress}% tasks`
                   : `${taskProgress}% tasks complete`}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <p className="font-medium">
+              <p className="font-display text-lg leading-snug">
                 {mission ? mission.title : "No mission yet today."}
               </p>
-              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
                   style={{ width: `${taskProgress}%` }}
                 />
               </div>
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-xl bg-muted/60 px-2 py-2">
+                <div className="rounded-xl bg-white/[0.04] px-2 py-2">
                   <p className="font-display text-xl font-semibold">
-                    {doneTasks.length}
+                    {completedTasks.length}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">done</p>
+                  <p className={HUD}>done</p>
                 </div>
-                <div className="rounded-xl bg-muted/60 px-2 py-2">
+                <div className="rounded-xl bg-white/[0.04] px-2 py-2">
                   <p className="font-display text-xl font-semibold">
                     {openTasks.length}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">open</p>
+                  <p className={HUD}>open</p>
                 </div>
-                <div className="rounded-xl bg-muted/60 px-2 py-2">
+                <div className="rounded-xl bg-white/[0.04] px-2 py-2">
                   <p className="font-display text-xl font-semibold">
                     {doneMinutes}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">min</p>
+                  <p className={HUD}>min</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Upcoming tasks */}
-          <Card id="tasks" className="shadow-sm">
+          <Card id="tasks" className={GLASS}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">
                 Upcoming tasks
               </CardTitle>
-              <CardDescription>
+              <CardDescription className={HUD}>
                 {mission ? "Tap the box to complete." : "Save a mission first."}
               </CardDescription>
             </CardHeader>
@@ -453,13 +550,13 @@ export default function Home() {
                       });
                     })
                   }
-                  className="flex items-center gap-2.5 rounded-xl px-1 py-1 text-left text-sm hover:bg-muted/50"
+                  className="flex items-center gap-2.5 rounded-xl px-1 py-1 text-left text-sm hover:bg-white/5"
                 >
                   <span
-                    className={`flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border ${
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-md border ${
                       t.status === "completed"
                         ? "border-primary bg-primary text-primary-foreground"
-                        : "border-input bg-transparent"
+                        : "border-white/25 bg-transparent"
                     }`}
                   >
                     {t.status === "completed" && <Check className="h-3 w-3" />}
@@ -474,7 +571,7 @@ export default function Home() {
                     {t.title}
                   </span>
                   {t.estimatedMinutes && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto font-mono text-xs text-muted-foreground">
                       {t.estimatedMinutes}m
                     </span>
                   )}
@@ -486,9 +583,10 @@ export default function Home() {
                     value={tTitle}
                     onChange={(e) => setTTitle(e.target.value)}
                     placeholder="Add one small action…"
+                    className="border-white/10 bg-white/[0.04]"
                   />
                   <Input
-                    className="w-16"
+                    className="w-16 border-white/10 bg-white/[0.04]"
                     type="number"
                     min={1}
                     aria-label="Estimated minutes"
@@ -519,12 +617,12 @@ export default function Home() {
           </Card>
 
           {/* Mission */}
-          <Card className="shadow-sm">
+          <Card className={GLASS}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">
                 Today&apos;s mission
               </CardTitle>
-              <CardDescription>One main outcome.</CardDescription>
+              <CardDescription className={HUD}>One main outcome.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {mission ? (
@@ -541,6 +639,7 @@ export default function Home() {
                   {mission.status !== "completed" && (
                     <Button
                       variant="outline"
+                      className="border-white/15 bg-transparent hover:bg-white/5"
                       onClick={() =>
                         run(async () => {
                           await api(`/api/missions/${mission.id}`, {
@@ -563,6 +662,7 @@ export default function Home() {
                       value={mTitle}
                       onChange={(e) => setMTitle(e.target.value)}
                       placeholder="e.g. Create the FocusOS dashboard"
+                      className="border-white/10 bg-white/[0.04]"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -574,6 +674,7 @@ export default function Home() {
                         min={1}
                         value={mMinutes}
                         onChange={(e) => setMMinutes(e.target.value)}
+                        className="border-white/10 bg-white/[0.04]"
                       />
                     </div>
                     <div className="grid gap-2">
@@ -583,6 +684,7 @@ export default function Home() {
                         value={mSuccess}
                         onChange={(e) => setMSuccess(e.target.value)}
                         placeholder="How you know"
+                        className="border-white/10 bg-white/[0.04]"
                       />
                     </div>
                   </div>
@@ -613,13 +715,13 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Focus timer — the orange card */}
+          {/* Focus timer — the gold card */}
           <Card
             id="focus"
-            className="border-primary bg-primary text-primary-foreground shadow-md"
+            className="border-primary bg-primary text-primary-foreground shadow-xl shadow-primary/20"
           >
             <CardHeader className="pb-2">
-              <CardDescription className="text-primary-foreground/80">
+              <CardDescription className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">
                 {running ? "Focusing now" : "Pomodoro timer"}
               </CardDescription>
               <CardTitle className="font-display text-5xl font-semibold tracking-tight">
@@ -629,14 +731,14 @@ export default function Home() {
             <CardContent className="flex flex-col gap-3">
               {running ? (
                 <>
-                  <p className="text-sm text-primary-foreground/85">
+                  <p className="text-sm text-primary-foreground/80">
                     {running.plannedMinutes} min planned
-                    {fTaskId
+                    {running.taskId
                       ? ` · ${tasks.find((t) => t.id === running.taskId)?.title ?? ""}`
                       : ""}
                   </p>
                   <div className="grid gap-2">
-                    <Label htmlFor="f-out" className="text-primary-foreground/85">
+                    <Label htmlFor="f-out" className="text-primary-foreground/80">
                       Outcome note
                     </Label>
                     <Textarea
@@ -644,7 +746,7 @@ export default function Home() {
                       value={fOutcome}
                       onChange={(e) => setFOutcome(e.target.value)}
                       placeholder="What happened in this session?"
-                      className="border-white/30 bg-white/15 text-primary-foreground placeholder:text-primary-foreground/60"
+                      className="border-black/20 bg-black/10 text-primary-foreground placeholder:text-primary-foreground/50"
                     />
                   </div>
                   <div className="flex gap-2">
@@ -670,7 +772,7 @@ export default function Home() {
                     </Button>
                     <Button
                       variant="outline"
-                      className="border-white/40 bg-transparent text-primary-foreground hover:bg-white/10 hover:text-primary-foreground"
+                      className="border-black/25 bg-transparent text-primary-foreground hover:bg-black/10 hover:text-primary-foreground"
                       onClick={() =>
                         run(async () => {
                           await api(
@@ -695,7 +797,7 @@ export default function Home() {
                 <>
                   <div className="flex gap-2">
                     <select
-                      className="flex h-9 flex-1 rounded-md border border-white/30 bg-transparent px-3 text-sm text-primary-foreground [&>option]:text-black"
+                      className="flex h-9 flex-1 rounded-md border border-black/20 bg-transparent px-3 text-sm text-primary-foreground [&>option]:text-black"
                       value={fTaskId}
                       onChange={(e) => setFTaskId(e.target.value)}
                     >
@@ -707,7 +809,7 @@ export default function Home() {
                       ))}
                     </select>
                     <Input
-                      className="w-18 border-white/30 bg-transparent text-primary-foreground"
+                      className="w-18 border-black/20 bg-transparent text-primary-foreground"
                       type="number"
                       min={1}
                       value={fMinutes}
@@ -737,13 +839,15 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Handoff / affirmation */}
-          <Card className="shadow-sm">
+          {/* Handoff */}
+          <Card className={GLASS}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">
                 Tomorrow starts with
               </CardTitle>
-              <CardDescription>Yesterday&apos;s handoff to you.</CardDescription>
+              <CardDescription className={HUD}>
+                Yesterday&apos;s handoff.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {handoff?.nextStartAction ? (
@@ -760,10 +864,10 @@ export default function Home() {
           </Card>
 
           {/* Sessions */}
-          <Card id="history" className="shadow-sm">
+          <Card id="history" className={GLASS}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">Well done</CardTitle>
-              <CardDescription>
+              <CardDescription className={HUD}>
                 {doneMinutes} focused minutes today.
               </CardDescription>
             </CardHeader>
@@ -776,7 +880,7 @@ export default function Home() {
               {sessions.map((s) => (
                 <div
                   key={s.id}
-                  className="flex items-center justify-between gap-2 rounded-xl bg-muted/50 px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-2 rounded-xl bg-white/[0.04] px-3 py-2 text-sm"
                 >
                   <div>
                     <p>
@@ -797,12 +901,12 @@ export default function Home() {
           </Card>
 
           {/* Reflection */}
-          <Card id="reflection" className="shadow-sm lg:col-span-2">
+          <Card id="reflection" className={`lg:col-span-2 ${GLASS}`}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">
                 Evening reflection
               </CardTitle>
-              <CardDescription>
+              <CardDescription className={HUD}>
                 Under five minutes.
                 {reflection ? " Saved — editing updates it." : ""}
               </CardDescription>
@@ -815,6 +919,7 @@ export default function Home() {
                   value={rCompleted}
                   onChange={(e) => setRCompleted(e.target.value)}
                   placeholder="Real outcomes, not intentions…"
+                  className="border-white/10 bg-white/[0.04]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -825,6 +930,7 @@ export default function Home() {
                     value={rBlockers}
                     onChange={(e) => setRBlockers(e.target.value)}
                     placeholder="What blocked progress"
+                    className="border-white/10 bg-white/[0.04]"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -834,6 +940,7 @@ export default function Home() {
                     value={rDistractions}
                     onChange={(e) => setRDistractions(e.target.value)}
                     placeholder="What pulled attention"
+                    className="border-white/10 bg-white/[0.04]"
                   />
                 </div>
               </div>
@@ -842,7 +949,7 @@ export default function Home() {
                   <Label htmlFor="r-energy">Energy (1-5)</Label>
                   <select
                     id="r-energy"
-                    className="flex h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                    className="flex h-9 rounded-md border border-white/10 bg-white/[0.04] px-3 text-sm"
                     value={rEnergy}
                     onChange={(e) => setREnergy(e.target.value)}
                   >
@@ -860,6 +967,7 @@ export default function Home() {
                     value={rLesson}
                     onChange={(e) => setRLesson(e.target.value)}
                     placeholder="What did today teach"
+                    className="border-white/10 bg-white/[0.04]"
                   />
                 </div>
               </div>
@@ -870,6 +978,7 @@ export default function Home() {
                   value={rNext}
                   onChange={(e) => setRNext(e.target.value)}
                   placeholder="The exact next step…"
+                  className="border-white/10 bg-white/[0.04]"
                 />
               </div>
               <Button
@@ -892,7 +1001,7 @@ export default function Home() {
                 {reflection ? "Update reflection" : "Save reflection"}
               </Button>
               {recent.length > 0 && (
-                <div className="flex flex-col gap-1.5 border-t pt-3">
+                <div className="flex flex-col gap-1.5 border-t border-white/10 pt-3">
                   {recent.map((r) => (
                     <div
                       key={r.id}
