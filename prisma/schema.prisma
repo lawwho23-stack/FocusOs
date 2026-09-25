@@ -1,0 +1,116 @@
+// FocusOS database schema.
+// Chain: Project -> DailyMission -> Task -> FocusSession.
+// Reflection stands alone, linked by date (not by foreign key):
+// a day without a mission can still have a reflection.
+// No AI or evidence tables yet. Added later when needed.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled Supabase URL (port 6543), used by the app
+  directUrl = env("DIRECT_URL") // direct Supabase URL (port 5432), used for migrations
+}
+
+enum ProjectStatus {
+  active
+  paused
+  completed
+  archived
+}
+
+enum ProjectPriority {
+  low
+  medium
+  high
+}
+
+enum MissionStatus {
+  planned
+  active
+  completed
+  skipped
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  completed
+  skipped
+}
+
+enum SessionStatus {
+  running
+  completed
+  cancelled
+  interrupted
+}
+
+model Project {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus   @default(active)
+  priority    ProjectPriority @default(medium)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  missions    DailyMission[]
+}
+
+model DailyMission {
+  id                String        @id @default(cuid())
+  projectId         String
+  project           Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  missionDate       DateTime      @db.Date
+  title             String
+  description       String?
+  status            MissionStatus @default(planned)
+  availableMinutes  Int?
+  successDefinition String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  tasks             Task[]
+}
+
+model Task {
+  id               String      @id @default(cuid())
+  missionId        String
+  mission          DailyMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  title            String
+  description      String?
+  status           TaskStatus  @default(todo)
+  estimatedMinutes Int?
+  orderIndex       Int         @default(0)
+  createdAt        DateTime    @default(now())
+  completedAt      DateTime?
+  sessions         FocusSession[]
+}
+
+model FocusSession {
+  id               String        @id @default(cuid())
+  taskId           String?
+  task             Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  startedAt        DateTime      @default(now())
+  endedAt          DateTime?
+  plannedMinutes   Int
+  actualMinutes    Int?
+  status           SessionStatus @default(running)
+  interruptionNote String?
+  outcome          String?
+}
+
+model Reflection {
+  id              String   @id @default(cuid())
+  reflectionDate  DateTime @db.Date @unique
+  completedWork   String?
+  blockers        String?
+  distractions    String?
+  energyLevel     Int?
+  lesson          String?
+  nextStartAction String?
+  aiSummary       String? // filled by the AI coach phase; stays null until then
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
