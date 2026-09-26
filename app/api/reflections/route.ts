@@ -2,13 +2,22 @@ import { db } from "@/lib/db";
 import { dayToDate, isValidDateString, resolveDay } from "@/lib/day";
 
 // GET /api/reflections?date=YYYY-MM-DD — one reflection, 404 when none.
-// GET /api/reflections?recent=7 — last N reflections, newest first.
+// GET /api/reflections?recent=7 — last N reflections (max 90), newest first.
+//   &before=YYYY-MM-DD — only days before that one ("load more" paging).
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const recent = url.searchParams.get("recent");
   if (recent !== null) {
-    const n = Math.min(Math.max(parseInt(recent || "7", 10) || 7, 1), 30);
+    const n = Math.min(Math.max(parseInt(recent || "7", 10) || 7, 1), 90);
+    const before = url.searchParams.get("before");
+    if (before !== null && !isValidDateString(before)) {
+      return Response.json(
+        { error: "before must be YYYY-MM-DD." },
+        { status: 400 }
+      );
+    }
     const list = await db.reflection.findMany({
+      where: before ? { reflectionDate: { lt: dayToDate(before) } } : undefined,
       orderBy: { reflectionDate: "desc" },
       take: n,
     });

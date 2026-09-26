@@ -3,6 +3,7 @@
 // Reflection and DailyNote stand alone, linked by date (not by foreign key):
 // a day without a mission can still have a reflection or a note.
 // The AI coach's answer is cached in Reflection.aiSummary (no AI table yet).
+// Goal stands alone too: long-term direction, not linked to daily work yet.
 
 generator client {
   provider = "prisma-client-js"
@@ -75,15 +76,15 @@ model DailyMission {
 }
 
 model Task {
-  id               String      @id @default(cuid())
+  id               String         @id @default(cuid())
   missionId        String
-  mission          DailyMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  mission          DailyMission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
   title            String
   description      String?
-  status           TaskStatus  @default(todo)
+  status           TaskStatus     @default(todo)
   estimatedMinutes Int?
-  orderIndex       Int         @default(0)
-  createdAt        DateTime    @default(now())
+  orderIndex       Int            @default(0)
+  createdAt        DateTime       @default(now())
   completedAt      DateTime?
   sessions         FocusSession[]
 }
@@ -103,7 +104,7 @@ model FocusSession {
 
 model Reflection {
   id              String   @id @default(cuid())
-  reflectionDate  DateTime @db.Date @unique
+  reflectionDate  DateTime @unique @db.Date
   completedWork   String?
   blockers        String?
   distractions    String?
@@ -119,7 +120,7 @@ model Reflection {
 // One free-text personal note per day. Upserted by date, like Reflection.
 model DailyNote {
   id        String   @id @default(cuid())
-  noteDate  DateTime @db.Date @unique
+  noteDate  DateTime @unique @db.Date
   content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -139,4 +140,31 @@ model CoachMessage {
   createdAt DateTime @default(now())
 
   @@index([chatDate, createdAt])
+}
+
+enum GoalHorizon {
+  quarter // about 3 months
+  year
+  multi_year // 3+ years
+}
+
+enum GoalStatus {
+  active
+  achieved
+  dropped
+}
+
+// A long-term goal. `plan` is free text: how Laww intends to get there.
+model Goal {
+  id         String      @id @default(cuid())
+  title      String
+  why        String?
+  plan       String?
+  horizon    GoalHorizon
+  targetDate DateTime?   @db.Date
+  status     GoalStatus  @default(active)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([status, horizon])
 }

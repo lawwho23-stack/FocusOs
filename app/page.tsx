@@ -7,18 +7,9 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  History,
-  ListChecks,
-  Moon,
-  NotebookPen,
-  Orbit,
   Plus,
-  Sparkles,
-  Sun,
-  Timer,
   Undo2,
 } from "lucide-react";
-import SpaceCanvas from "@/components/space-canvas";
 import DayNotesCard from "@/components/day-notes-card";
 import CoachWidget from "@/components/coach-widget";
 import { Button } from "@/components/ui/button";
@@ -33,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { GLASS, HUD, api, isValidDay } from "@/lib/ui";
 
 // Minimal shapes matching the API responses. Kept local on purpose:
 // one page, one file, no premature shared-types folder yet.
@@ -107,16 +99,6 @@ type DayProgress = {
   hasNote: boolean;
 };
 
-async function api(path: string, init?: RequestInit) {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json" },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-  return data;
-}
-
 // Database DATE values arrive as midnight UTC, so their ISO slice is the
 // day. For real instants (Date objects), the browser's own timezone gives
 // the calendar day the user lived.
@@ -145,19 +127,6 @@ function daysBetween(a: string, b: string): number {
   );
 }
 
-function scrollTo(id: string) {
-  // The coach lives in the floating lion widget, not in the page.
-  if (id === "coach") {
-    window.dispatchEvent(new Event("focusos:open-coach"));
-    return;
-  }
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-}
-
-const DOT_COLORS = ["#f5b90d", "#8b7cf6", "#3ddc97", "#f472b6", "#4cc3ff"];
-const HUD = "font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground";
-const GLASS = "border-white/10 bg-card/80 shadow-xl shadow-black/40 backdrop-blur";
-
 export default function Home() {
   const [today, setToday] = useState(() => dayKey(new Date()));
   // The day that was clicked. The browser — not the server's clock —
@@ -174,7 +143,6 @@ export default function Home() {
     return { year: d.getFullYear(), month: d.getMonth() };
   });
 
-  const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [day, setDay] = useState<Day | null>(null);
   const [progress, setProgress] = useState<DayProgress[]>([]);
@@ -237,14 +205,13 @@ export default function Home() {
       const list = (await api("/api/projects")) as Project[];
       const active =
         list.find((p) => p.status === "active") ?? list[0] ?? null;
-      return { projects: list, project: active, day: d, recent: recentList, week, month };
+      return { project: active, day: d, recent: recentList, week, month };
     },
     []
   );
 
   const applyState = useCallback(
     (s: Awaited<ReturnType<typeof fetchState>>) => {
-      setProjects(s.projects);
       setProject(s.project);
       setDay(s.day);
       setRecent(s.recent);
@@ -303,6 +270,13 @@ export default function Home() {
       clearInterval(timer);
       window.removeEventListener("focus", check);
     };
+  }, []);
+
+  // Other pages link here as /?date=YYYY-MM-DD to open one day.
+  // Read from window once on mount (no useSearchParams, so no Suspense).
+  useEffect(() => {
+    const d = new URLSearchParams(window.location.search).get("date");
+    if (isValidDay(d) && d !== todayRef.current) selectDay(d);
   }, []);
 
   function selectDay(date: string) {
@@ -401,66 +375,10 @@ export default function Home() {
 
   const maxWeekMinutes = Math.max(1, ...progress.map((d) => d.focusMinutes));
 
-  const nav = [
-    { id: "my-day", label: "My day", icon: Sun },
-    { id: "tasks", label: "Tasks", icon: ListChecks },
-    { id: "focus", label: "Focus", icon: Timer },
-    { id: "notes", label: "Notes", icon: NotebookPen },
-    { id: "reflection", label: "Reflection", icon: Moon },
-    { id: "coach", label: "AI Coach", icon: Sparkles },
-    { id: "progress", label: "Progress", icon: Orbit },
-    { id: "history", label: "History", icon: History },
-  ];
-
   return (
-    <div className="min-h-screen">
-      <SpaceCanvas />
-      <div className="mx-auto flex max-w-6xl items-start gap-4 p-4">
-        {/* Sidebar */}
-        <aside
-          className={`sticky top-4 hidden w-56 shrink-0 flex-col gap-1 rounded-2xl p-3 md:flex ${GLASS}`}
-        >
-          <div className="flex items-center gap-2 px-2 py-2">
-            <Orbit className="h-4 w-4 text-primary" />
-            <p className="font-display text-lg font-semibold">FocusOS</p>
-          </div>
-          <p className={HUD + " px-3 pt-1"}>Space / Gravity / Motion</p>
-          {nav.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => scrollTo(n.id)}
-              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-white/5"
-            >
-              <n.icon className="h-4 w-4 text-muted-foreground" />
-              {n.label}
-            </button>
-          ))}
-          <p className={HUD + " px-3 pt-3"}>Projects</p>
-          {projects.map((p, i) => (
-            <div
-              key={p.id}
-              className="flex items-center gap-2.5 rounded-xl px-3 py-1.5 text-sm"
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ background: DOT_COLORS[i % DOT_COLORS.length] }}
-              />
-              <span className="truncate">{p.name}</span>
-            </div>
-          ))}
-          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-foreground/80">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            {selectedLabel}
-            {isToday && <span className="text-muted-foreground">· today</span>}
-          </div>
-          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-muted-foreground">
-            <Archive className="h-4 w-4" />
-            {day?.stats.sessionsCompleted ?? 0} sessions done
-          </div>
-        </aside>
-
+    <>
         {/* Main column */}
-        <main className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
+        <main className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {/* Hero */}
           <div className="flex flex-col gap-1 lg:col-span-3">
             <p className={HUD + " text-primary"}>
@@ -490,6 +408,17 @@ export default function Home() {
                 ? "Small mass moves daily. Consistency builds the universe."
                 : "Looking back. Past days are for review — notes and reflection stay editable."}
             </p>
+            <div className="flex flex-wrap items-center gap-4 pt-1 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <CalendarDays className="h-4 w-4" />
+                {selectedLabel}
+                {isToday && " · today"}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Archive className="h-4 w-4" />
+                {day?.stats.sessionsCompleted ?? 0} sessions done
+              </span>
+            </div>
           </div>
 
           {error && (
@@ -1250,8 +1179,7 @@ export default function Home() {
             />
           )}
         </main>
-      </div>
       {day && <CoachWidget date={day.date} dateLabel={selectedLabel} />}
-    </div>
+    </>
   );
 }
