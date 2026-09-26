@@ -304,7 +304,7 @@ function CoachChat({
           <p className="font-display text-base font-semibold leading-tight">
             AI Coach
           </p>
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             {dateLabel} + 7 days before
           </p>
         </div>
@@ -380,7 +380,7 @@ function CoachChat({
             <LionBubble title="Next action" highlight>
               {c.nextAction}
             </LionBubble>
-            <p className="px-10 font-mono text-[10px] text-muted-foreground">
+            <p className="px-10 text-[10px] text-muted-foreground">
               Report from {new Date(report.generatedAt).toLocaleString()}
             </p>
           </>
@@ -491,7 +491,7 @@ function LionBubble({
       >
         {title && (
           <p
-            className={`mb-1 font-mono text-[10px] uppercase tracking-[0.2em] ${
+            className={`mb-1 text-[10px] uppercase tracking-[0.2em] ${
               highlight ? "text-primary" : "text-muted-foreground"
             }`}
           >

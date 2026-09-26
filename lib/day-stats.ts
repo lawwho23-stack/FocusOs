@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import { addDays, dayBounds, dayToDate, instantToDay } from "@/lib/day";
 
+// Lives in its own db-free file so browser pages can use the same rule.
+export { hasReflection } from "@/lib/reflection";
+
 // Everything recorded for a range of days, plus computed numbers per day.
 // One source of truth: the day view, the calendar dots and the AI coach
 // all read these same numbers, so the coach can never disagree with the UI.
@@ -20,31 +23,6 @@ export type DayStats = {
   energy: number | null;
   minutesLost: number | null; // self-reported in the reflection
 };
-
-// True when Laww actually wrote something. A row can exist holding only the
-// coach's answer (aiSummary); that must not count as "reflected".
-export function hasReflection(
-  r: {
-    completedWork: string | null;
-    blockers: string | null;
-    distractions: string | null;
-    energyLevel: number | null;
-    lesson: string | null;
-    nextStartAction: string | null;
-    minutesLost: number | null;
-  } | null
-): boolean {
-  if (!r) return false;
-  return [
-    r.completedWork,
-    r.blockers,
-    r.distractions,
-    r.energyLevel,
-    r.lesson,
-    r.nextStartAction,
-    r.minutesLost,
-  ].some((v) => v !== null && v !== "");
-}
 
 export async function loadDays(start: string, end: string) {
   const [missions, sessions, reflections, notes] = await Promise.all([

@@ -2,8 +2,19 @@ import { db } from "@/lib/db";
 import { dayToDate, isValidDateString, resolveDay } from "@/lib/day";
 
 // GET /api/notes?date=YYYY-MM-DD — the day's note, 404 when none.
+// GET /api/notes?recent=30 — last N notes (max 366), newest first.
 export async function GET(req: Request) {
-  const day = resolveDay(new URL(req.url).searchParams.get("date"));
+  const url = new URL(req.url);
+  const recent = url.searchParams.get("recent");
+  if (recent !== null) {
+    const n = Math.min(Math.max(parseInt(recent || "30", 10) || 30, 1), 366);
+    const list = await db.dailyNote.findMany({
+      orderBy: { noteDate: "desc" },
+      take: n,
+    });
+    return Response.json(list);
+  }
+  const day = resolveDay(url.searchParams.get("date"));
   if (!day) {
     return Response.json({ error: "date must be YYYY-MM-DD." }, { status: 400 });
   }
