@@ -5,15 +5,22 @@ import {
   Archive,
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   History,
   ListChecks,
+  Moon,
   NotebookPen,
   Orbit,
   Plus,
+  Sparkles,
   Sun,
   Timer,
+  Undo2,
 } from "lucide-react";
 import SpaceCanvas from "@/components/space-canvas";
+import DayNotesCard from "@/components/day-notes-card";
+import CoachWidget from "@/components/coach-widget";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -39,6 +46,7 @@ type Session = {
   status: string;
   outcome: string | null;
   interruptionNote: string | null;
+  task?: { title: string } | null;
 };
 type Task = {
   id: string;
@@ -66,6 +74,27 @@ type Reflection = {
   energyLevel: number | null;
   lesson: string | null;
   nextStartAction: string | null;
+  minutesLost: number | null;
+};
+type DayStats = {
+  tasksDone: number;
+  tasksTotal: number;
+  taskPct: number | null;
+  focusMinutes: number;
+  sessionsCompleted: number;
+  sessionsInterrupted: number;
+  plannedMinutes: number;
+  energy: number | null;
+  minutesLost: number | null;
+};
+// GET /api/day — everything recorded for one date.
+type Day = {
+  date: string;
+  mission: Mission | null;
+  sessions: Session[];
+  reflection: Reflection | null;
+  note: { content: string } | null;
+  stats: DayStats;
 };
 type DayProgress = {
   date: string;
@@ -75,6 +104,7 @@ type DayProgress = {
   tasksTotal: number;
   focusMinutes: number;
   reflected: boolean;
+  hasNote: boolean;
 };
 
 async function api(path: string, init?: RequestInit) {
@@ -87,14 +117,40 @@ async function api(path: string, init?: RequestInit) {
   return data;
 }
 
-// Database DATE values arrive as midnight UTC. Formatting in the
-// browser's own timezone gives the calendar day the user lived.
+// Database DATE values arrive as midnight UTC, so their ISO slice is the
+// day. For real instants (Date objects), the browser's own timezone gives
+// the calendar day the user lived.
 function dayKey(d: Date | string): string {
-  const dt = typeof d === "string" ? new Date(d) : d;
-  return dt.toLocaleDateString("en-CA"); // YYYY-MM-DD
+  if (typeof d === "string") return d.slice(0, 10);
+  return d.toLocaleDateString("en-CA"); // YYYY-MM-DD
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+// Last day of a month, as YYYY-MM-DD. month is 0-based.
+function monthEnd(year: number, month: number): string {
+  return `${year}-${pad(month + 1)}-${pad(new Date(year, month + 1, 0).getDate())}`;
+}
+
+// Date-string arithmetic in UTC, so no local timezone can shift the day.
+function shiftDay(day: string, n: number): string {
+  const d = new Date(day + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.round(
+    (Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000
+  );
 }
 
 function scrollTo(id: string) {
+  // The coach lives in the floating lion widget, not in the page.
+  if (id === "coach") {
+    window.dispatchEvent(new Event("focusos:open-coach"));
+    return;
+  }
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 }
 
@@ -103,11 +159,26 @@ const HUD = "font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foregro
 const GLASS = "border-white/10 bg-card/80 shadow-xl shadow-black/40 backdrop-blur";
 
 export default function Home() {
+  const [today, setToday] = useState(() => dayKey(new Date()));
+  // The day that was clicked. The browser — not the server's clock —
+  // decides what "today" is. Writes never use this directly; they use the
+  // day that is actually loaded (day.date), see `shownDate` below.
+  const [selectedDate, setSelectedDate] = useState(today);
+  const selectedRef = useRef(selectedDate);
+  const todayRef = useRef(today);
+  useEffect(() => {
+    selectedRef.current = selectedDate;
+  }, [selectedDate]);
+  const [viewMonth, setViewMonth] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
-  const [mission, setMission] = useState<Mission | null>(null);
-  const [noMission, setNoMission] = useState(false);
+  const [day, setDay] = useState<Day | null>(null);
   const [progress, setProgress] = useState<DayProgress[]>([]);
+  const [monthProgress, setMonthProgress] = useState<DayProgress[]>([]);
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
@@ -123,7 +194,6 @@ export default function Home() {
   const [fMinutes, setFMinutes] = useState("25");
   const [fOutcome, setFOutcome] = useState("");
   // Reflection form
-  const [reflection, setReflection] = useState<Reflection | null>(null);
   const [recent, setRecent] = useState<Reflection[]>([]);
   const [rCompleted, setRCompleted] = useState("");
   const [rBlockers, setRBlockers] = useState("");
@@ -131,92 +201,79 @@ export default function Home() {
   const [rEnergy, setREnergy] = useState("3");
   const [rLesson, setRLesson] = useState("");
   const [rNext, setRNext] = useState("");
-  // Which reflection the form was prefilled from. Prefill happens once
-  // per reflection so refreshes never wipe unsaved typing.
-  const refilledId = useRef<string | null>(null);
+  const [rLost, setRLost] = useState("");
+  // Which day + reflection the form was prefilled from. Prefill happens
+  // once per pair, so refreshes never wipe unsaved typing, and switching
+  // days always resets the form (even between two empty days).
+  const refilledKey = useRef<string | null>(null);
 
   // Reads server state without touching React state, so both the
   // initial load (inside an effect) and refreshes can share it.
-  const fetchState = useCallback(async () => {
-    const list = (await api("/api/projects")) as Project[];
-    const active =
-      list.find((p) => p.status === "active") ?? list[0] ?? null;
-    let m: Mission | null = null;
-    let noM = false;
-    try {
-      m = (await api("/api/missions/today")) as Mission;
-    } catch (e) {
-      if (e instanceof Error && e.message.includes("No mission")) {
-        noM = true;
+  // Requests run one after another ON PURPOSE: DATABASE_URL allows a single
+  // pooled connection, and parallel requests queue until Prisma times out.
+  const fetchState = useCallback(
+    async (date: string, calEnd: string) => {
+      const d = (await api(`/api/day?date=${date}`)) as Day;
+      // One progress call covers both the week strip (7 days ending on the
+      // selected day) and the calendar month, when they are close together.
+      const weekStart = shiftDay(date, -6);
+      const monthStart = calEnd.slice(0, 8) + "01";
+      const start = weekStart < monthStart ? weekStart : monthStart;
+      const end = date > calEnd ? date : calEnd;
+      const span = daysBetween(start, end) + 1;
+      let week: DayProgress[];
+      let month: DayProgress[];
+      if (span <= 42) {
+        const all = (await api(
+          `/api/progress?days=${span}&end=${end}`
+        )) as DayProgress[];
+        week = all.filter((x) => x.date >= weekStart && x.date <= date);
+        month = all;
       } else {
-        throw e;
+        week = (await api(`/api/progress?days=7&end=${date}`)) as DayProgress[];
+        month = (await api(`/api/progress?days=42&end=${calEnd}`)) as DayProgress[];
       }
-    }
-    // Reflection belongs to the day, not the mission, so it loads
-    // even when no mission exists.
-    let refl: Reflection | null = null;
-    try {
-      refl = (await api(
-        `/api/reflections?date=${dayKey(new Date())}`
-      )) as Reflection;
-    } catch (e) {
-      if (!(e instanceof Error) || !e.message.includes("No reflection")) {
-        throw e;
-      }
-    }
-    const recentList = (await api("/api/reflections?recent=7")) as Reflection[];
-    const week = (await api("/api/progress?days=7")) as DayProgress[];
-    return {
-      projects: list,
-      project: active,
-      mission: m,
-      noMission: noM,
-      reflection: refl,
-      recent: recentList,
-      progress: week,
-    };
-  }, []);
+      const recentList = (await api("/api/reflections?recent=30")) as Reflection[];
+      const list = (await api("/api/projects")) as Project[];
+      const active =
+        list.find((p) => p.status === "active") ?? list[0] ?? null;
+      return { projects: list, project: active, day: d, recent: recentList, week, month };
+    },
+    []
+  );
 
   const applyState = useCallback(
-    (s: {
-      projects: Project[];
-      project: Project | null;
-      mission: Mission | null;
-      noMission: boolean;
-      reflection: Reflection | null;
-      recent: Reflection[];
-      progress: DayProgress[];
-    }) => {
+    (s: Awaited<ReturnType<typeof fetchState>>) => {
       setProjects(s.projects);
       setProject(s.project);
-      setMission(s.mission);
-      setNoMission(s.noMission);
-      setReflection(s.reflection);
+      setDay(s.day);
       setRecent(s.recent);
-      setProgress(s.progress);
-      const key = s.reflection ? s.reflection.id : "none";
-      if (refilledId.current !== key) {
-        refilledId.current = key;
-        setRCompleted(s.reflection?.completedWork ?? "");
-        setRBlockers(s.reflection?.blockers ?? "");
-        setRDistractions(s.reflection?.distractions ?? "");
-        setREnergy(
-          s.reflection?.energyLevel != null
-            ? String(s.reflection.energyLevel)
-            : "3"
-        );
-        setRLesson(s.reflection?.lesson ?? "");
-        setRNext(s.reflection?.nextStartAction ?? "");
+      setProgress(s.week);
+      setMonthProgress(s.month);
+      const r = s.day.reflection;
+      const key = `${s.day.date}:${r ? r.id : "none"}`;
+      if (refilledKey.current !== key) {
+        refilledKey.current = key;
+        setRCompleted(r?.completedWork ?? "");
+        setRBlockers(r?.blockers ?? "");
+        setRDistractions(r?.distractions ?? "");
+        setREnergy(r?.energyLevel != null ? String(r.energyLevel) : "3");
+        setRLesson(r?.lesson ?? "");
+        setRNext(r?.nextStartAction ?? "");
+        setRLost(r?.minutesLost != null ? String(r.minutesLost) : "");
       }
     },
     []
   );
 
+  const calEnd = monthEnd(viewMonth.year, viewMonth.month);
+
   useEffect(() => {
     let active = true;
-    fetchState().then(
+    fetchState(selectedDate, calEnd).then(
       (s) => {
         if (!active) return;
+        setError("");
         applyState(s);
       },
       (e) => {
@@ -227,13 +284,56 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, [fetchState, applyState]);
+  }, [fetchState, applyState, selectedDate, calEnd]);
+
+  // Keep "today" true when the tab stays open past midnight. A viewer who
+  // was on today follows it to the new today; a past day stays put.
+  useEffect(() => {
+    const check = () => {
+      const t = dayKey(new Date());
+      const prev = todayRef.current;
+      if (prev === t) return;
+      todayRef.current = t;
+      setToday(t);
+      if (selectedRef.current === prev) selectDay(t);
+    };
+    const timer = setInterval(check, 60_000);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", check);
+    };
+  }, []);
+
+  function selectDay(date: string) {
+    selectedRef.current = date;
+    setSelectedDate(date);
+    const [y, m] = date.split("-").map(Number);
+    setViewMonth({ year: y, month: m - 1 });
+  }
+
+  function shiftMonth(delta: number) {
+    setViewMonth(({ year, month }) => {
+      const d = new Date(year, month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  }
+
+  // The loaded day drives every control and write. While another day is
+  // loading, `loading` is true and all save/add buttons are disabled, so
+  // nothing can be written to the wrong date.
+  const shownDate = day?.date ?? selectedDate;
+  const loading = day?.date !== selectedDate;
+  const isToday = shownDate === today;
+  const mission = day?.mission ?? null;
+  const noMission = day !== null && !mission;
+  const reflection = day?.reflection ?? null;
 
   // Ticking clock so the running session shows elapsed time.
   // Display only — real duration is computed by the server on finish.
+  const sessions = day?.sessions ?? [];
   const running: Session | null =
-    mission?.tasks.flatMap((t) => t.sessions).find((s) => s.status === "running") ??
-    null;
+    (isToday && sessions.find((s) => s.status === "running")) || null;
   useEffect(() => {
     if (!running) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -244,7 +344,9 @@ export default function Home() {
     setError("");
     try {
       await fn();
-      applyState(await fetchState());
+      const s = await fetchState(selectedRef.current, calEnd);
+      // A day switch during the refresh wins: never paint an old day.
+      if (s.day.date === selectedRef.current) applyState(s);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     }
@@ -253,40 +355,45 @@ export default function Home() {
   const tasks = mission?.tasks ?? [];
   const openTasks = tasks.filter((t) => t.status !== "completed");
   const completedTasks = tasks.filter((t) => t.status === "completed");
-  const sessions = tasks.flatMap((t) => t.sessions);
-  const doneSessions = sessions.filter((s) => s.status === "completed");
   const elapsedSec = running
     ? Math.max(0, Math.floor((now - new Date(running.startedAt).getTime()) / 1000))
     : 0;
   const elapsedLabel = `${String(Math.floor(elapsedSec / 60)).padStart(2, "0")}:${String(
     elapsedSec % 60
   ).padStart(2, "0")}`;
-  const doneMinutes = doneSessions.reduce(
-    (sum, s) => sum + (s.actualMinutes ?? 0),
-    0
-  );
-  const taskProgress =
-    tasks.length === 0
-      ? 0
-      : Math.round((completedTasks.length / tasks.length) * 100);
+  const doneMinutes = day?.stats.focusMinutes ?? 0;
+  const taskProgress = day?.stats.taskPct ?? 0;
 
-  // Yesterday's handoff: the newest past reflection that names a next action.
-  const today = dayKey(new Date());
+  // Handoff: the newest reflection before the selected day that names a
+  // next action (skipped days don't break the chain).
   const handoff =
-    recent.find((r) => dayKey(r.reflectionDate) < today && r.nextStartAction) ??
-    null;
+    recent.find(
+      (r) => dayKey(r.reflectionDate) < selectedDate && r.nextStartAction
+    ) ?? null;
 
-  // Calendar month grid for the current month.
-  const calDate = new Date();
-  const calYear = calDate.getFullYear();
-  const calMonth = calDate.getMonth();
-  const monthName = calDate.toLocaleDateString(undefined, { month: "long" });
+  const fmtDay = (d: string) =>
+    new Date(d + "T00:00:00").toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  // Cards describe the loaded day; the header follows the click instantly.
+  const selectedLabel = fmtDay(shownDate);
+  const headerLabel = fmtDay(selectedDate);
+
+  // Calendar month grid for the month being viewed.
+  const calYear = viewMonth.year;
+  const calMonth = viewMonth.month;
+  const monthName = new Date(calYear, calMonth, 1).toLocaleDateString(
+    undefined,
+    { month: "long" }
+  );
   const firstDow = new Date(calYear, calMonth, 1).getDay();
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-  const markedDays = new Set<string>();
-  if (mission) markedDays.add(today);
-  recent.forEach((r) => markedDays.add(dayKey(r.reflectionDate)));
-  const pad = (n: number) => String(n).padStart(2, "0");
+  const markedDays = new Set(
+    monthProgress
+      .filter((d) => d.hasMission || d.reflected || d.hasNote || d.focusMinutes > 0)
+      .map((d) => d.date)
+  );
   const cells: (number | null)[] = [
     ...Array<null>(firstDow).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
@@ -298,7 +405,9 @@ export default function Home() {
     { id: "my-day", label: "My day", icon: Sun },
     { id: "tasks", label: "Tasks", icon: ListChecks },
     { id: "focus", label: "Focus", icon: Timer },
-    { id: "reflection", label: "Notes", icon: NotebookPen },
+    { id: "notes", label: "Notes", icon: NotebookPen },
+    { id: "reflection", label: "Reflection", icon: Moon },
+    { id: "coach", label: "AI Coach", icon: Sparkles },
     { id: "progress", label: "Progress", icon: Orbit },
     { id: "history", label: "History", icon: History },
   ];
@@ -341,14 +450,12 @@ export default function Home() {
           ))}
           <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-foreground/80">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            {calDate.toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-            })}
+            {selectedLabel}
+            {isToday && <span className="text-muted-foreground">· today</span>}
           </div>
           <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-muted-foreground">
             <Archive className="h-4 w-4" />
-            {doneSessions.length} sessions done
+            {day?.stats.sessionsCompleted ?? 0} sessions done
           </div>
         </aside>
 
@@ -359,11 +466,29 @@ export default function Home() {
             <p className={HUD + " text-primary"}>
               Space&nbsp;&nbsp;/&nbsp;&nbsp;Gravity&nbsp;&nbsp;/&nbsp;&nbsp;Motion
             </p>
-            <h1 className="font-display text-5xl font-semibold tracking-tight">
-              Today&apos;s <span className="text-primary">orbit</span>
-            </h1>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <h1 className="font-display text-5xl font-semibold tracking-tight">
+                {selectedDate === today ? "Today" : headerLabel}&apos;s{" "}
+                <span className="text-primary">orbit</span>
+                {loading && day && (
+                  <span className={HUD + " ml-3 align-middle"}>loading…</span>
+                )}
+              </h1>
+              {selectedDate !== today && (
+                <Button
+                  variant="outline"
+                  className="border-primary/50 bg-transparent hover:bg-primary/10"
+                  onClick={() => selectDay(today)}
+                >
+                  <Undo2 className="h-4 w-4" />
+                  Back to today
+                </Button>
+              )}
+            </div>
             <p className="font-mono text-sm text-muted-foreground">
-              Small mass moves daily. Consistency builds the universe.
+              {isToday
+                ? "Small mass moves daily. Consistency builds the universe."
+                : "Looking back. Past days are for review — notes and reflection stay editable."}
             </p>
           </div>
 
@@ -376,7 +501,9 @@ export default function Home() {
           {/* Week progress strip */}
           <Card id="progress" className={`lg:col-span-3 ${GLASS}`}>
             <CardHeader className="pb-2">
-              <CardTitle className="font-display text-xl">This week</CardTitle>
+              <CardTitle className="font-display text-xl">
+                {isToday ? "This week" : `Week to ${selectedLabel}`}
+              </CardTitle>
               <CardDescription className={HUD}>
                 Mass curves space · Gravity creates motion
               </CardDescription>
@@ -384,14 +511,16 @@ export default function Home() {
             <CardContent>
               <div className="grid grid-cols-7 gap-2">
                 {progress.map((d) => {
-                  const isToday = d.date === today;
+                  const isSel = d.date === selectedDate;
                   const label = new Date(d.date + "T00:00:00")
                     .toLocaleDateString(undefined, { weekday: "narrow" });
                   return (
-                    <div
+                    <button
                       key={d.date}
-                      className={`flex flex-col items-center gap-1 rounded-xl px-1 py-2 ${
-                        isToday ? "bg-primary/10 ring-1 ring-primary/50" : "bg-white/[0.03]"
+                      onClick={() => selectDay(d.date)}
+                      title={d.date}
+                      className={`flex flex-col items-center gap-1 rounded-xl px-1 py-2 transition-colors ${
+                        isSel ? "bg-primary/10 ring-1 ring-primary/50" : "bg-white/[0.03] hover:bg-white/[0.06]"
                       }`}
                     >
                       <span className={HUD}>{label}</span>
@@ -425,7 +554,7 @@ export default function Home() {
                           }`}
                         />
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -435,11 +564,30 @@ export default function Home() {
           {/* Calendar */}
           <Card className={GLASS}>
             <CardHeader className="pb-2">
-              <div className="flex items-baseline justify-between">
+              <div className="flex items-center justify-between">
                 <CardTitle className="font-display text-xl">
-                  {monthName}
+                  {monthName} <span className={HUD}>{calYear}</span>
                 </CardTitle>
-                <span className={HUD}>{calYear}</span>
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Previous month"
+                    className="h-7 w-7 hover:bg-white/5"
+                    onClick={() => shiftMonth(-1)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Next month"
+                    className="h-7 w-7 hover:bg-white/5"
+                    onClick={() => shiftMonth(1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -449,28 +597,32 @@ export default function Home() {
                     {d}
                   </span>
                 ))}
-                {cells.map((day, i) => {
-                  if (day === null) return <span key={i} />;
-                  const key = `${calYear}-${pad(calMonth + 1)}-${pad(day)}`;
-                  const isToday = key === today;
+                {cells.map((n, i) => {
+                  if (n === null) return <span key={i} />;
+                  const key = `${calYear}-${pad(calMonth + 1)}-${pad(n)}`;
+                  const isTodayCell = key === today;
+                  const isSel = key === selectedDate;
                   return (
-                    <span
+                    <button
                       key={i}
-                      className={`flex flex-col items-center rounded-full py-1 text-xs ${
-                        isToday
+                      onClick={() => selectDay(key)}
+                      aria-label={key}
+                      aria-pressed={isSel}
+                      className={`flex flex-col items-center rounded-full py-1 text-xs transition-colors ${
+                        isTodayCell
                           ? "bg-primary font-semibold text-primary-foreground"
-                          : ""
-                      }`}
+                          : "text-foreground/80 hover:bg-white/10"
+                      } ${isSel ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : ""}`}
                     >
-                      {day}
+                      {n}
                       <span
                         className={`h-1 w-1 rounded-full ${
-                          markedDays.has(key) && !isToday
+                          markedDays.has(key) && !isTodayCell
                             ? "bg-primary"
                             : "bg-transparent"
                         }`}
                       />
-                    </span>
+                    </button>
                   );
                 })}
               </div>
@@ -480,7 +632,9 @@ export default function Home() {
           {/* My day summary */}
           <Card id="my-day" className={GLASS}>
             <CardHeader className="pb-2">
-              <CardTitle className="font-display text-xl">My day</CardTitle>
+              <CardTitle className="font-display text-xl">
+                {isToday ? "My day" : selectedLabel}
+              </CardTitle>
               <CardDescription className={HUD}>
                 {reflection?.energyLevel
                   ? `Energy ${reflection.energyLevel}/5 · ${taskProgress}% tasks`
@@ -489,7 +643,11 @@ export default function Home() {
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <p className="font-display text-lg leading-snug">
-                {mission ? mission.title : "No mission yet today."}
+                {mission
+                  ? mission.title
+                  : isToday
+                    ? "No mission yet today."
+                    : "No mission on this day."}
               </p>
               <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
                 <div
@@ -524,10 +682,14 @@ export default function Home() {
           <Card id="tasks" className={GLASS}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">
-                Upcoming tasks
+                {isToday ? "Upcoming tasks" : "Tasks that day"}
               </CardTitle>
               <CardDescription className={HUD}>
-                {mission ? "Tap the box to complete." : "Save a mission first."}
+                {mission
+                  ? `${completedTasks.length}/${tasks.length} done · tap the box to change.`
+                  : isToday
+                    ? "Save a mission first."
+                    : "No mission that day."}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
@@ -539,6 +701,7 @@ export default function Home() {
               {tasks.map((t) => (
                 <button
                   key={t.id}
+                  disabled={loading}
                   onClick={() =>
                     mission &&
                     run(async () => {
@@ -577,7 +740,7 @@ export default function Home() {
                   )}
                 </button>
               ))}
-              {mission && (
+              {mission && isToday && (
                 <div className="mt-1 flex gap-2">
                   <Input
                     value={tTitle}
@@ -596,6 +759,7 @@ export default function Home() {
                   <Button
                     size="icon"
                     aria-label="Add task"
+                    disabled={loading}
                     onClick={() =>
                       run(async () => {
                         await api(`/api/missions/${mission.id}/tasks`, {
@@ -620,7 +784,7 @@ export default function Home() {
           <Card className={GLASS}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">
-                Today&apos;s mission
+                {isToday ? "Today\u2019s mission" : "Mission"}
               </CardTitle>
               <CardDescription className={HUD}>One main outcome.</CardDescription>
             </CardHeader>
@@ -653,6 +817,10 @@ export default function Home() {
                     </Button>
                   )}
                 </>
+              ) : noMission && !isToday ? (
+                <p className="text-sm text-muted-foreground">
+                  No mission was set on this day.
+                </p>
               ) : noMission ? (
                 <>
                   <div className="grid gap-2">
@@ -689,6 +857,7 @@ export default function Home() {
                     </div>
                   </div>
                   <Button
+                    disabled={loading}
                     onClick={() =>
                       run(async () => {
                         if (!project) throw new Error("No project found.");
@@ -696,6 +865,7 @@ export default function Home() {
                           method: "POST",
                           body: JSON.stringify({
                             projectId: project.id,
+                            missionDate: shownDate,
                             title: mTitle,
                             availableMinutes: Number(mMinutes) || null,
                             successDefinition: mSuccess || null,
@@ -722,10 +892,18 @@ export default function Home() {
           >
             <CardHeader className="pb-2">
               <CardDescription className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">
-                {running ? "Focusing now" : "Pomodoro timer"}
+                {running
+                  ? "Focusing now"
+                  : isToday
+                    ? "Pomodoro timer"
+                    : `Focus on ${selectedLabel}`}
               </CardDescription>
               <CardTitle className="font-display text-5xl font-semibold tracking-tight">
-                {running ? elapsedLabel : `${fMinutes.padStart(2, "0")}:00`}
+                {running
+                  ? elapsedLabel
+                  : isToday
+                    ? `${fMinutes.padStart(2, "0")}:00`
+                    : `${doneMinutes} min`}
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
@@ -793,6 +971,13 @@ export default function Home() {
                     </Button>
                   </div>
                 </>
+              ) : !isToday ? (
+                <p className="text-sm text-primary-foreground/80">
+                  {day?.stats.sessionsCompleted ?? 0} completed ·{" "}
+                  {day?.stats.sessionsInterrupted ?? 0} interrupted ·{" "}
+                  {day?.stats.plannedMinutes ?? 0} min planned. The timer only
+                  runs on today.
+                </p>
               ) : (
                 <>
                   <div className="flex gap-2">
@@ -818,7 +1003,7 @@ export default function Home() {
                   </div>
                   <Button
                     variant="secondary"
-                    disabled={!mission}
+                    disabled={!mission || loading}
                     onClick={() =>
                       run(async () => {
                         const s: Session = await api("/api/focus-sessions/start", {
@@ -843,10 +1028,12 @@ export default function Home() {
           <Card className={GLASS}>
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">
-                Tomorrow starts with
+                {isToday ? "Today starts with" : `${selectedLabel} started with`}
               </CardTitle>
               <CardDescription className={HUD}>
-                Yesterday&apos;s handoff.
+                {handoff
+                  ? `Handoff from ${new Date(dayKey(handoff.reflectionDate) + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`
+                  : "The previous evening\u2019s handoff."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -868,13 +1055,15 @@ export default function Home() {
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">Well done</CardTitle>
               <CardDescription className={HUD}>
-                {doneMinutes} focused minutes today.
+                {doneMinutes} focused minutes{isToday ? " today" : ""}.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
               {sessions.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  No sessions yet. Start the first one above.
+                  {isToday
+                    ? "No sessions yet. Start the first one above."
+                    : "No focus sessions on this day."}
                 </p>
               )}
               {sessions.map((s) => (
@@ -887,6 +1076,10 @@ export default function Home() {
                       {s.status === "running"
                         ? "Running…"
                         : `${s.actualMinutes ?? "?"} min · ${s.status}`}
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {s.task?.title ?? "quick start"}
+                      </span>
                     </p>
                     {(s.outcome || s.interruptionNote) && (
                       <p className="text-xs text-muted-foreground">
@@ -905,6 +1098,9 @@ export default function Home() {
             <CardHeader className="pb-2">
               <CardTitle className="font-display text-xl">
                 Evening reflection
+                {!isToday && (
+                  <span className={HUD + " ml-2"}>{selectedLabel}</span>
+                )}
               </CardTitle>
               <CardDescription className={HUD}>
                 Under five minutes.
@@ -944,7 +1140,7 @@ export default function Home() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <div className="grid gap-2">
                   <Label htmlFor="r-energy">Energy (1-5)</Label>
                   <select
@@ -959,6 +1155,19 @@ export default function Home() {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="r-lost">Minutes lost</Label>
+                  <Input
+                    id="r-lost"
+                    type="number"
+                    min={0}
+                    max={1440}
+                    value={rLost}
+                    onChange={(e) => setRLost(e.target.value)}
+                    placeholder="Wasted min"
+                    className="border-white/10 bg-white/[0.04]"
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="r-lesson">One lesson</Label>
@@ -982,17 +1191,21 @@ export default function Home() {
                 />
               </div>
               <Button
+                disabled={loading}
                 onClick={() =>
                   run(async () => {
                     await api("/api/reflections", {
                       method: "POST",
                       body: JSON.stringify({
+                        reflectionDate: shownDate,
                         completedWork: rCompleted || null,
                         blockers: rBlockers || null,
                         distractions: rDistractions || null,
                         energyLevel: Number(rEnergy) || null,
                         lesson: rLesson || null,
                         nextStartAction: rNext || null,
+                        minutesLost:
+                          rLost.trim() === "" ? null : Math.round(Number(rLost)),
                       }),
                     });
                   })
@@ -1002,10 +1215,14 @@ export default function Home() {
               </Button>
               {recent.length > 0 && (
                 <div className="flex flex-col gap-1.5 border-t border-white/10 pt-3">
-                  {recent.map((r) => (
-                    <div
+                  {recent
+                    .filter((r) => r.completedWork || r.lesson || r.blockers || r.distractions || r.nextStartAction || r.energyLevel != null || r.minutesLost != null)
+                    .slice(0, 7)
+                    .map((r) => (
+                    <button
                       key={r.id}
-                      className="flex items-center justify-between gap-2 text-sm"
+                      onClick={() => selectDay(dayKey(r.reflectionDate))}
+                      className="flex items-center justify-between gap-2 rounded-lg px-1 text-left text-sm hover:bg-white/5"
                     >
                       <p className="truncate text-muted-foreground">
                         {dayKey(r.reflectionDate)} —{" "}
@@ -1014,14 +1231,27 @@ export default function Home() {
                       {r.energyLevel != null && (
                         <Badge variant="outline">⚡{r.energyLevel}</Badge>
                       )}
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {/* Notes remount per day (key) so unsaved text never crosses days */}
+          {day && (
+            <DayNotesCard
+              key={`notes-${day.date}`}
+              date={day.date}
+              initial={day.note?.content ?? ""}
+              className={`lg:col-span-3 ${GLASS}`}
+              hud={HUD}
+              onSaved={() => run(async () => {})}
+            />
+          )}
         </main>
       </div>
+      {day && <CoachWidget date={day.date} dateLabel={selectedLabel} />}
     </div>
   );
 }
