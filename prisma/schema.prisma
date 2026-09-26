@@ -1,8 +1,8 @@
 // FocusOS database schema.
 // Chain: Project -> DailyMission -> Task -> FocusSession.
-// Reflection stands alone, linked by date (not by foreign key):
-// a day without a mission can still have a reflection.
-// No AI or evidence tables yet. Added later when needed.
+// Reflection and DailyNote stand alone, linked by date (not by foreign key):
+// a day without a mission can still have a reflection or a note.
+// The AI coach's answer is cached in Reflection.aiSummary (no AI table yet).
 
 generator client {
   provider = "prisma-client-js"
@@ -110,7 +110,33 @@ model Reflection {
   energyLevel     Int?
   lesson          String?
   nextStartAction String?
-  aiSummary       String? // filled by the AI coach phase; stays null until then
+  minutesLost     Int? // self-reported wasted minutes; the coach never guesses this
+  aiSummary       String? // AI coach answer as JSON; null until "Coach me" is pressed
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// One free-text personal note per day. Upserted by date, like Reflection.
+model DailyNote {
+  id        String   @id @default(cuid())
+  noteDate  DateTime @db.Date @unique
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ChatRole {
+  user
+  assistant
+}
+
+// AI Coach chat, one thread per day. Kept until Laww presses Reset.
+model CoachMessage {
+  id        String   @id @default(cuid())
+  chatDate  DateTime @db.Date
+  role      ChatRole
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([chatDate, createdAt])
 }

@@ -34,7 +34,8 @@ export async function GET(req: Request) {
 // Saving twice updates instead of duplicating, so a double submit
 // or an evening edit never creates two rows for one day.
 // Body: { reflectionDate? (default today), completedWork?, blockers?,
-//         distractions?, energyLevel? (1-5), lesson?, nextStartAction? }
+//         distractions?, energyLevel? (1-5), lesson?, nextStartAction?,
+//         minutesLost? (0-1440) }
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
@@ -68,6 +69,18 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+  if (
+    body.minutesLost !== undefined &&
+    body.minutesLost !== null &&
+    (!Number.isInteger(body.minutesLost) ||
+      body.minutesLost < 0 ||
+      body.minutesLost > 1440)
+  ) {
+    return Response.json(
+      { error: "minutesLost must be 0-1440." },
+      { status: 400 }
+    );
+  }
   const reflection = await db.reflection.upsert({
     where: { reflectionDate: dayToDate(day) },
     create: {
@@ -78,6 +91,7 @@ export async function POST(req: Request) {
       energyLevel: body.energyLevel ?? null,
       lesson: body.lesson ?? null,
       nextStartAction: body.nextStartAction ?? null,
+      minutesLost: body.minutesLost ?? null,
     },
     update: {
       ...(body.completedWork !== undefined
@@ -93,6 +107,9 @@ export async function POST(req: Request) {
       ...(body.lesson !== undefined ? { lesson: body.lesson } : {}),
       ...(body.nextStartAction !== undefined
         ? { nextStartAction: body.nextStartAction }
+        : {}),
+      ...(body.minutesLost !== undefined
+        ? { minutesLost: body.minutesLost }
         : {}),
     },
   });
