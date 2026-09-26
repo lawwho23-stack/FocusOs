@@ -2,8 +2,9 @@
 // Chain: Project -> DailyMission -> Task -> FocusSession.
 // Reflection and DailyNote stand alone, linked by date (not by foreign key):
 // a day without a mission can still have a reflection or a note.
-// The AI coach's answer is cached in Reflection.aiSummary (no AI table yet).
+// The AI coach's answer is cached in Reflection.aiSummary.
 // Goal stands alone too: long-term direction, not linked to daily work yet.
+// DayScore caches Jev's per-day progress score (see lib/progress-score.ts).
 
 generator client {
   provider = "prisma-client-js"
@@ -167,4 +168,20 @@ model Goal {
   updatedAt  DateTime    @updatedAt
 
   @@index([status, horizon])
+}
+
+// Jev's progress score for one day, cached so revisiting costs nothing.
+// dataHash is a fingerprint of what Jev saw; when the day's tasks, focus
+// sessions, reflection or note change, the hash changes and the day is
+// scored again. score is 0-100 (Jev's 0-3 level scaled).
+model DayScore {
+  id         String   @id @default(cuid())
+  scoreDate  DateTime @unique @db.Date
+  score      Int
+  level      Float // Jev's raw score on the 0-3 QUALITY scale
+  confidence Float
+  dataHash   String
+  model      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

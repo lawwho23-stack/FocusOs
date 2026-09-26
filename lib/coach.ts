@@ -37,10 +37,10 @@ export function coachConfigured(): boolean {
   return !!process.env.OPENROUTER_API_KEY;
 }
 
-// What the AI sees: numbers and Laww's own words, nothing else.
-// Days are oldest first; the last one is the day being coached.
-export function buildCoachState(days: DayData[]) {
-  const view = (d: DayData) => ({
+// One day as the AI sees it: numbers and Laww's own words, nothing else.
+// Shared by the coach and the Progress scores so both judge the same facts.
+export function dayView(d: DayData) {
+  return {
     date: d.date,
     mission: d.mission
       ? {
@@ -69,7 +69,13 @@ export function buildCoachState(days: DayData[]) {
         }
       : null,
     note: d.note?.content ?? null,
-  });
+  };
+}
+
+// What the AI sees: numbers and Laww's own words, nothing else.
+// Days are oldest first; the last one is the day being coached.
+export function buildCoachState(days: DayData[]) {
+  const view = dayView;
   const focus = days[days.length - 1];
   const previous = days.slice(0, -1);
   const withData = previous.filter(
@@ -106,7 +112,7 @@ const LEAKS = {
   none: "No time loss is recorded, or there is not enough information to tell.",
 } as const;
 
-const QUALITY = [
+export const QUALITY = [
   "No meaningful work: no mission, or no task done and no focus time.",
   "Some motion: a little focus time or a small task done, but the main mission did not move forward.",
   "Solid: the main mission moved forward with real focus time, though part of the plan was left undone.",

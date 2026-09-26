@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  History,
-  ListChecks,
   Moon,
   NotebookPen,
   Orbit,
@@ -20,17 +18,14 @@ import { DOT_COLORS, GLASS, HUD, api } from "@/lib/ui";
 type Project = { id: string; name: string };
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
-// Pages get their own route; Tasks / Progress / History are cards on
-// My day, so they link to that card's id (/#tasks scrolls to it).
+// Every item is its own page.
 const NAV: NavItem[] = [
   { href: "/", label: "My day", icon: Sun },
   { href: "/goals", label: "Goals", icon: Target },
-  { href: "/#tasks", label: "Tasks", icon: ListChecks },
   { href: "/focus", label: "Focus", icon: Timer },
   { href: "/notes", label: "Notes", icon: NotebookPen },
   { href: "/reflection", label: "Reflection", icon: Moon },
-  { href: "/#progress", label: "Progress", icon: Orbit },
-  { href: "/#history", label: "History", icon: History },
+  { href: "/progress", label: "Progress", icon: Orbit },
 ];
 
 // The coach lives in the floating lion widget that every page mounts.
@@ -49,10 +44,8 @@ export default function Sidebar() {
     );
   }, []);
 
-  // Hash links (/#tasks) are never "active": they are shortcuts into My day.
   const isActive = (href: string) =>
-    !href.includes("#") &&
-    (href === "/" ? pathname === "/" : pathname.startsWith(href));
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   const itemClass = (active: boolean) =>
     `flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
@@ -102,11 +95,12 @@ export default function Sidebar() {
         ))}
       </aside>
 
-      {/* Phone nav: one scrollable row, since the sidebar is hidden there */}
+      {/* Phone nav: one scrollable row, since the sidebar is hidden there.
+          pr-24 keeps the last item clear of the lion coach button. */}
       <nav
-        className={`fixed inset-x-0 bottom-0 z-40 flex gap-1 overflow-x-auto border-t px-2 py-2 md:hidden ${GLASS}`}
+        className={`fixed inset-x-0 bottom-0 z-40 flex gap-1 overflow-x-auto border-t py-2 pl-2 pr-24 md:hidden ${GLASS}`}
       >
-        {NAV.filter((n) => !n.href.includes("#")).map((n) => {
+        {NAV.map((n) => {
           const active = isActive(n.href);
           return (
             <Link

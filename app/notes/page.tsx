@@ -61,7 +61,7 @@ export default function NotesPage() {
         <h1 className="font-display text-5xl font-semibold tracking-tight">
           Your <span className="text-primary">notes</span>
         </h1>
-        <p className="font-mono text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           One page per day. Write today, look back any time.
         </p>
       </div>

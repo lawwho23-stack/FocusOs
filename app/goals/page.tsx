@@ -72,6 +72,8 @@ function GoalForm({
         setBusy(true);
         try {
           await onSubmit(d);
+        } catch {
+          // run() already shows the error; keep the form open with the text.
         } finally {
           setBusy(false);
         }
@@ -325,7 +327,7 @@ export default function GoalsPage() {
             </Button>
           )}
         </div>
-        <p className="font-mono text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Daily missions are the small mass. These are the gravity they move toward.
         </p>
       </div>

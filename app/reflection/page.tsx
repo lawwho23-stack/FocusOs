@@ -85,7 +85,7 @@ export default function ReflectionHistoryPage() {
         <h1 className="font-display text-5xl font-semibold tracking-tight">
           Looking <span className="text-primary">back</span>
         </h1>
-        <p className="font-mono text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Every evening reflection, newest first. Write tonight&apos;s on{" "}
           <Link href="/#reflection" className="text-primary underline">
             My day

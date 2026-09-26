@@ -1,13 +1,24 @@
 // Shared class strings so every page looks like the same app.
 export const HUD =
-  "font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground";
+  "text-[11px] uppercase tracking-[0.2em] text-muted-foreground";
 export const GLASS =
   "border-white/10 bg-card/80 shadow-xl shadow-black/40 backdrop-blur";
 export const FIELD = "border-white/10 bg-white/[0.04]";
 export const DOT_COLORS = ["#f5b90d", "#8b7cf6", "#3ddc97", "#f472b6", "#4cc3ff"];
 
 // Browser-side fetch helper: JSON in, JSON out, throws the API's error text.
-export async function api(path: string, init?: RequestInit) {
+// Calls run ONE AT A TIME through a queue: DATABASE_URL allows a single
+// pooled connection, and the sidebar and a page loading together would
+// otherwise race for it until Prisma times out (P2024).
+let queue: Promise<unknown> = Promise.resolve();
+
+export function api(path: string, init?: RequestInit): Promise<any> { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const next = queue.then(() => request(path, init));
+  queue = next.catch(() => {});
+  return next;
+}
+
+async function request(path: string, init?: RequestInit) {
   const res = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json" },

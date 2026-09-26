@@ -10,7 +10,6 @@ import {
   Plus,
   Undo2,
 } from "lucide-react";
-import DayNotesCard from "@/components/day-notes-card";
 import CoachWidget from "@/components/coach-widget";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -403,21 +402,24 @@ export default function Home() {
                 </Button>
               )}
             </div>
-            <p className="font-mono text-sm text-muted-foreground">
-              {isToday
-                ? "Small mass moves daily. Consistency builds the universe."
-                : "Looking back. Past days are for review — notes and reflection stay editable."}
-            </p>
-            <div className="flex flex-wrap items-center gap-4 pt-1 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <CalendarDays className="h-4 w-4" />
-                {selectedLabel}
-                {isToday && " · today"}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Archive className="h-4 w-4" />
-                {day?.stats.sessionsCompleted ?? 0} sessions done
-              </span>
+            {/* Tagline on the left, day facts pinned to the right */}
+            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
+              <p className="text-sm text-muted-foreground">
+                {isToday
+                  ? "Small mass moves daily. Consistency builds the universe."
+                  : "Looking back. Past days are for review — the reflection stays editable."}
+              </p>
+              <div className="ml-auto flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="h-4 w-4" />
+                  {selectedLabel}
+                  {isToday && " · today"}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Archive className="h-4 w-4" />
+                  {day?.stats.sessionsCompleted ?? 0} sessions done
+                </span>
+              </div>
             </div>
           </div>
 
@@ -434,7 +436,7 @@ export default function Home() {
                 {isToday ? "This week" : `Week to ${selectedLabel}`}
               </CardTitle>
               <CardDescription className={HUD}>
-                Mass curves space · Gravity creates motion
+                Mass curves space
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -522,7 +524,7 @@ export default function Home() {
             <CardContent>
               <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground">
                 {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-                  <span key={i} className="font-mono">
+                  <span key={i}>
                     {d}
                   </span>
                 ))}
@@ -663,7 +665,7 @@ export default function Home() {
                     {t.title}
                   </span>
                   {t.estimatedMinutes && (
-                    <span className="ml-auto font-mono text-xs text-muted-foreground">
+                    <span className="ml-auto text-xs text-muted-foreground">
                       {t.estimatedMinutes}m
                     </span>
                   )}
@@ -820,14 +822,14 @@ export default function Home() {
             className="border-primary bg-primary text-primary-foreground shadow-xl shadow-primary/20"
           >
             <CardHeader className="pb-2">
-              <CardDescription className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">
+              <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">
                 {running
                   ? "Focusing now"
                   : isToday
                     ? "Pomodoro timer"
                     : `Focus on ${selectedLabel}`}
               </CardDescription>
-              <CardTitle className="font-display text-5xl font-semibold tracking-tight">
+              <CardTitle className="font-display text-5xl font-semibold tracking-tight tabular-nums">
                 {running
                   ? elapsedLabel
                   : isToday
@@ -1167,17 +1169,6 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Notes remount per day (key) so unsaved text never crosses days */}
-          {day && (
-            <DayNotesCard
-              key={`notes-${day.date}`}
-              date={day.date}
-              initial={day.note?.content ?? ""}
-              className={`lg:col-span-3 ${GLASS}`}
-              hud={HUD}
-              onSaved={() => run(async () => {})}
-            />
-          )}
         </main>
       {day && <CoachWidget date={day.date} dateLabel={selectedLabel} />}
     </>

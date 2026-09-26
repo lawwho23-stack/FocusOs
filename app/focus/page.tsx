@@ -88,7 +88,7 @@ export default function FocusHistoryPage() {
             ))}
           </div>
         </div>
-        <p className="font-mono text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Every session you started, newest first.
         </p>
       </div>
@@ -161,7 +161,7 @@ export default function FocusHistoryPage() {
               >
                 <div className="min-w-0">
                   <p className="truncate">
-                    <span className="font-mono text-muted-foreground">
+                    <span className="text-muted-foreground">
                       {new Date(s.startedAt).toLocaleTimeString(undefined, {
                         hour: "2-digit",
                         minute: "2-digit",
