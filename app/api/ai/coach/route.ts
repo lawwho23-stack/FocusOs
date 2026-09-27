@@ -1,7 +1,10 @@
+import { after } from "next/server";
 import { db } from "@/lib/db";
 import { addDays, dayToDate, isValidDateString, resolveDay } from "@/lib/day";
 import { loadDays } from "@/lib/day-stats";
 import { coachConfigured, runCoach, type CoachRecord } from "@/lib/coach";
+import { gatherBackground, syncAfterReply } from "@/lib/ai/context";
+import { dayText } from "@/lib/ai/rag";
 
 // Two AI calls in a row (Jev, then the writer) can take a while.
 export const maxDuration = 60;
@@ -59,7 +62,14 @@ export async function POST(req: Request) {
 
   let record: CoachRecord;
   try {
-    record = await runCoach(await loadDays(addDays(date, -7), date));
+    const days = await loadDays(addDays(date, -7), date);
+    // Redis background: facts and past days that match this day's content.
+    const bg = await gatherBackground(date, dayText(days[days.length - 1]));
+    record = await runCoach(days, {
+      memories: bg.memories,
+      pastDays: bg.pastDays,
+      knowledge: bg.knowledge,
+    });
   } catch (e) {
     console.error("Coach failed:", e);
     return Response.json(
@@ -70,6 +80,7 @@ export async function POST(req: Request) {
 
   // Saved only after a good answer. A day without a reflection gets an
   // empty row holding just the coach answer.
+  after(() => syncAfterReply(date));
   const aiSummary = JSON.stringify(record);
   await db.reflection.upsert({
     where,

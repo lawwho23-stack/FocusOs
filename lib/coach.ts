@@ -1,6 +1,7 @@
 import { OpenRouter } from "@openrouter/sdk";
 import { choice, noul, score, TypeSafeClient } from "@typesafe-ai/sdk";
 import { hasReflection, type DayData } from "@/lib/day-stats";
+import { DEFAULT_WRITER } from "@/lib/ai/llm";
 
 // AI Coach, in three layers:
 //   1. Code computes every number (lib/day-stats.ts). The AI never counts.
@@ -8,6 +9,8 @@ import { hasReflection, type DayData } from "@/lib/day-stats";
 //      the free text: how the day went, what ate the time, recurring blockers.
 //   3. A chat model on OpenRouter writes the short message from 1 + 2.
 // One key (OPENROUTER_API_KEY) pays for both AI calls.
+// Optional background from Redis (lib/ai/): long-term facts about Laww and
+// matching past days older than the 7-day window.
 
 export type Coach = {
   summary: string;
@@ -31,7 +34,24 @@ export type CoachRecord = {
 };
 
 const OPENROUTER_BASE = "https://openrouter.ai/api";
-const DEFAULT_WRITER = "deepseek/deepseek-v4-flash-0731";
+
+// Background from Redis memory + RAG. Context only, never a source of numbers.
+export type CoachBackground = {
+  memories: string[];
+  pastDays: { date: string; text: string }[];
+  knowledge?: { title: string; source: string; idea: string; tryThis: string; evidence: string }[];
+  summary?: string | null; // chat only: earlier turns of today's thread
+};
+
+const BACKGROUND_RULE = `- "background" (if present) holds remembered facts about them and past days that match the topic. Use it to spot long-running patterns and to personalise advice. The data is always newer and wins over background. Quote a past day's numbers only as that day's numbers, with its date.
+- "background.knowledge" holds ideas from books, research and philosophy that match the topic. When one truly fits, use at most ONE: name it and its source in a few words (e.g. "Gollwitzer's if-then plans"), tie it to their own data, and turn its step into their next action. Never lecture or list several. Respect its evidence label: call a practitioner idea a method, not a proven fact.`;
+
+function hasBackground(b?: CoachBackground): b is CoachBackground {
+  return (
+    !!b &&
+    (b.memories.length > 0 || b.pastDays.length > 0 || !!b.knowledge?.length || !!b.summary)
+  );
+}
 
 export function coachConfigured(): boolean {
   return !!process.env.OPENROUTER_API_KEY;
@@ -178,6 +198,7 @@ Rules:
 - The judgments are probabilities, not facts. If a judgment's confidence or probability is below 0.6, phrase it as "likely" or leave it out.
 - Talk to them as "you". Short sentences. Plain English. No emojis. No generic advice that ignores their data.
 - Compare the focus day with the previous 7 days only when the numbers support it.
+${BACKGROUND_RULE}
 - nextAction: one concrete, small first step (about 10-25 minutes) for their next session, built from their own nextStartAction, open tasks or mission when available.
 
 Return ONLY a JSON object with exactly these keys:
@@ -210,7 +231,11 @@ function extractJson(text: string): unknown {
 }
 
 // Layer 3: the writer.
-async function write(state: CoachState, judgments: Judgments) {
+async function write(
+  state: CoachState,
+  judgments: Judgments,
+  background?: CoachBackground
+) {
   const model = process.env.COACH_MODEL || DEFAULT_WRITER;
   const openRouter = new OpenRouter({
     apiKey: process.env.OPENROUTER_API_KEY ?? "",
@@ -223,7 +248,15 @@ async function write(state: CoachState, judgments: Judgments) {
         { role: "system", content: SYSTEM },
         {
           role: "user",
-          content: JSON.stringify({ data: state, judgments }, null, 1),
+          content: JSON.stringify(
+            {
+              data: state,
+              judgments,
+              ...(hasBackground(background) ? { background } : {}),
+            },
+            null,
+            1
+          ),
         },
       ],
       responseFormat: { type: "json_object" },
@@ -258,10 +291,13 @@ async function write(state: CoachState, judgments: Judgments) {
   return { coach: parsed, model: res.model ?? model };
 }
 
-export async function runCoach(days: DayData[]): Promise<CoachRecord> {
+export async function runCoach(
+  days: DayData[],
+  background?: CoachBackground
+): Promise<CoachRecord> {
   const state = buildCoachState(days);
   const judgments = await judge(state);
-  const { coach, model } = await write(state, judgments);
+  const { coach, model } = await write(state, judgments, background);
   return { coach, judgments, generatedAt: new Date().toISOString(), model };
 }
 
@@ -280,12 +316,15 @@ Rules:
 - Reply in simple English, even if they write in Burmese or mixed Burmese-English.
 - Never show raw field names (like minutesLost or sessionsInterrupted); say them in plain words ("minutes lost", "interrupted sessions").
 - Short: 2-6 sentences, or a short list when listing. No emojis. No markdown headings.
-- End with one concrete small step when it helps.`;
+- End with one concrete small step when it helps.
+${BACKGROUND_RULE}
+- "summary" in the background recaps earlier turns of this chat that are no longer shown.`;
 
 export async function chatCoach(
   days: DayData[],
   report: CoachRecord | null,
-  turns: ChatTurn[]
+  turns: ChatTurn[],
+  background?: CoachBackground
 ): Promise<string> {
   const model = process.env.COACH_MODEL || DEFAULT_WRITER;
   const openRouter = new OpenRouter({
@@ -306,6 +345,14 @@ export async function chatCoach(
       messages: [
         { role: "system", content: CHAT_SYSTEM },
         { role: "system", content: "Their data:\n" + context },
+        ...(hasBackground(background)
+          ? [
+              {
+                role: "system" as const,
+                content: "Background:\n" + JSON.stringify(background, null, 1),
+              },
+            ]
+          : []),
         ...turns.map((t) =>
           t.role === "user"
             ? { role: "user" as const, content: t.content }

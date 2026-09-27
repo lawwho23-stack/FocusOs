@@ -20,6 +20,36 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Redis (AI coach)
+
+The AI coach can use a Redis Cloud database. The client is `lib/redis.ts`.
+
+- Set `REDIS_URL=redis://default:<password>@<host>:<port>` in `.env` **and** in
+  Vercel → Settings → Environment Variables. Copy it from Redis Cloud → your
+  database → Connect. (The Redis Cloud *account* API key is not used.)
+- Redis is optional: without `REDIS_URL`, the app runs without it.
+- Check the connection: `GET /api/ai/coach/health` → `{"redis":"up"}`,
+  `"down"`, or `"not configured"`.
+
+What Redis does for the coach (code in `lib/ai/`, every layer fails open):
+
+| Layer | File | Redis keys |
+|---|---|---|
+| Knowledge / RAG: past days older than the 7-day window, found by meaning | `rag.ts` | `focusos:day:<date>`, index `focusos:days` |
+| Short-term memory: summary of chat turns that no longer fit in the prompt | `memory.ts` | `focusos:session:<date>` (14-day TTL) |
+| Long-term memory: durable facts Laww states about himself | `memory.ts` | `focusos:mem:<id>`, index `focusos:mem` |
+| Knowledge base: 55 ideas from books, research and philosophy (web-researched by Claude Code, quality-checked by Jev) | `knowledge.ts` | `focusos:kb:<slug>`, index `focusos:kb` |
+| LangCache: reuse answers to *general* questions only | `cache.ts` | Redis Cloud LangCache service |
+
+- Embeddings: OpenRouter `qwen/qwen3-embedding-4b` (override with `EMBED_MODEL`;
+  changing it rebuilds the indexes).
+- `npm run rag:backfill` embeds the whole history once (read-only on Postgres).
+  After that, each coach call re-embeds changed recent days in the background.
+- Long-term memory: `GET /api/ai/coach/memory` lists facts;
+  `DELETE /api/ai/coach/memory?id=<id>` (or `?all=1`) forgets them.
+- LangCache needs `LANGCACHE_URL`, `LANGCACHE_CACHE_ID`, `LANGCACHE_API_KEY`
+  (Redis Cloud → LangCache → Configuration → Connectivity). Off until all three are set.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
