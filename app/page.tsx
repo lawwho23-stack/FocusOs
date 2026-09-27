@@ -381,7 +381,7 @@ export default function Home() {
           {/* Hero */}
           <div className="flex flex-col gap-1 lg:col-span-3">
             <p className={HUD + " text-primary"}>
-              Space&nbsp;&nbsp;/&nbsp;&nbsp;Gravity&nbsp;&nbsp;/&nbsp;&nbsp;Motion
+              Work Hard&nbsp;&nbsp;/&nbsp;&nbsp;Consistency&nbsp;&nbsp;/&nbsp;&nbsp;Forward
             </p>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <h1 className="font-display text-5xl font-semibold tracking-tight">

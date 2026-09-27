@@ -64,7 +64,7 @@ export default function Sidebar() {
           <Orbit className="h-4 w-4 text-primary" />
           <p className="font-display text-lg font-semibold">FocusOS</p>
         </div>
-        <p className={HUD + " px-3 pt-1"}>Space / Gravity / Motion</p>
+        <p className={HUD + " px-3 pt-1"}>Work Hard / Consistency / Forward</p>
         {NAV.map((n) => {
           const active = isActive(n.href);
           return (
