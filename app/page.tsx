@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Archive,
+  CircleCheck,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -416,7 +416,7 @@ export default function Home() {
                   {isToday && " · today"}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Archive className="h-4 w-4" />
+                  <CircleCheck className="h-4 w-4" />
                   {day?.stats.sessionsCompleted ?? 0} sessions done
                 </span>
               </div>
@@ -1018,7 +1018,7 @@ export default function Home() {
                       </p>
                     )}
                   </div>
-                  <Badge variant="outline">{s.plannedMinutes} planned</Badge>
+                  <Badge variant="outline">{s.plannedMinutes} min planned</Badge>
                 </div>
               ))}
             </CardContent>
