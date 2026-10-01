@@ -185,3 +185,27 @@ model DayScore {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+enum PlanningStatus {
+  saved
+  planned
+  done
+  archived
+}
+
+// Future ideas stay independent of projects and today's work.
+model PlanningIdea {
+  id          String         @id @default(cuid())
+  title       String
+  writing     String
+  problem     String?
+  audience    String?
+  why         String?
+  firstStep   String?
+  revisitWhen String?
+  status      PlanningStatus @default(saved)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([createdAt])
+}

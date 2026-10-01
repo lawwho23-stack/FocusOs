@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --import tsx --test lib/*.test.mts",
     "postinstall": "prisma generate",
     "rag:backfill": "tsx scripts/backfill-rag.ts"
   },
