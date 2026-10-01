@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Moon,
+  Lightbulb,
   NotebookPen,
   Orbit,
   Sparkles,
@@ -22,6 +23,7 @@ type NavItem = { href: string; label: string; icon: LucideIcon };
 const NAV: NavItem[] = [
   { href: "/", label: "My day", icon: Sun },
   { href: "/goals", label: "Goals", icon: Target },
+  { href: "/planning", label: "Planning", icon: Lightbulb },
   { href: "/focus", label: "Focus", icon: Timer },
   { href: "/notes", label: "Notes", icon: NotebookPen },
   { href: "/reflection", label: "Reflection", icon: Moon },

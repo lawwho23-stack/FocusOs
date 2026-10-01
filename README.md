@@ -64,3 +64,26 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Planning ideas
+
+Open **Planning** (`/planning`) to capture ideas for later without changing daily
+missions or projects. Only the free-writing field is required; a title is
+created from its first line, and the development questions are optional.
+
+Unsaved new and edited drafts are kept in the same browser. **Save idea** or
+**Save changes** stores the entry in PostgreSQL. **Discard draft** removes the
+unfinished browser copy. Archiving is reversible through the Archived filter.
+
+For a new environment, apply migrations before starting the updated app:
+
+```bash
+npx prisma migrate deploy
+npm test
+npm run lint
+npm run build
+```
+
+`npm test` runs the Planning validation, draft parser, and API error-handling
+checks with Node's built-in test runner. The error-handling tests replace the
+database boundary and do not write to the configured database.
