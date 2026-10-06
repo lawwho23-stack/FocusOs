@@ -1,0 +1,1 @@
+ALTER TABLE "PlanningIdea" ADD COLUMN "checklist" JSONB NOT NULL DEFAULT '[]';

@@ -189,6 +189,7 @@ model DayScore {
 enum PlanningStatus {
   saved
   planned
+  action
   done
   archived
 }
@@ -204,8 +205,11 @@ model PlanningIdea {
   firstStep   String?
   revisitWhen String?
   status      PlanningStatus @default(saved)
+  position    Int            @default(0)
+  checklist   Json           @default("[]")
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
   @@index([createdAt])
+  @@index([status, position])
 }
