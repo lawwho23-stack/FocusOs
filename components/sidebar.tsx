@@ -5,13 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Moon,
+  Compass,
   Lightbulb,
   NotebookPen,
   Orbit,
   Sparkles,
   Sun,
   Target,
-  Timer,
   type LucideIcon,
 } from "lucide-react";
 import { DOT_COLORS, GLASS, HUD, api } from "@/lib/ui";
@@ -23,8 +23,8 @@ type NavItem = { href: string; label: string; icon: LucideIcon };
 const NAV: NavItem[] = [
   { href: "/", label: "My day", icon: Sun },
   { href: "/goals", label: "Goals", icon: Target },
+  { href: "/missions", label: "Missions", icon: Compass },
   { href: "/planning", label: "Planning", icon: Lightbulb },
-  { href: "/focus", label: "Focus", icon: Timer },
   { href: "/notes", label: "Notes", icon: NotebookPen },
   { href: "/reflection", label: "Reflection", icon: Moon },
   { href: "/progress", label: "Progress", icon: Orbit },

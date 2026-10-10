@@ -76,6 +76,19 @@ model DailyMission {
   tasks             Task[]
 }
 
+// Life direction is independent of dated missions, goals, and planning ideas.
+model LifeMission {
+  id        String   @id @default(cuid())
+  title     String
+  writing   String
+  icon      String   @default("compass")
+  checklist Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
 model Task {
   id               String         @id @default(cuid())
   missionId        String

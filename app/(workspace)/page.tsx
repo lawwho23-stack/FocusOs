@@ -147,7 +147,6 @@ export default function Home() {
   const [progress, setProgress] = useState<DayProgress[]>([]);
   const [monthProgress, setMonthProgress] = useState<DayProgress[]>([]);
   const [error, setError] = useState("");
-  const [now, setNow] = useState(() => Date.now());
 
   // Mission form
   const [mTitle, setMTitle] = useState("");
@@ -156,10 +155,6 @@ export default function Home() {
   // Task form
   const [tTitle, setTTitle] = useState("");
   const [tMinutes, setTMinutes] = useState("25");
-  // Focus form
-  const [fTaskId, setFTaskId] = useState("");
-  const [fMinutes, setFMinutes] = useState("25");
-  const [fOutcome, setFOutcome] = useState("");
   // Reflection form
   const [recent, setRecent] = useState<Reflection[]>([]);
   const [rCompleted, setRCompleted] = useState("");
@@ -302,16 +297,7 @@ export default function Home() {
   const noMission = day !== null && !mission;
   const reflection = day?.reflection ?? null;
 
-  // Ticking clock so the running session shows elapsed time.
-  // Display only — real duration is computed by the server on finish.
   const sessions = day?.sessions ?? [];
-  const running: Session | null =
-    (isToday && sessions.find((s) => s.status === "running")) || null;
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [running?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function run(fn: () => Promise<void>) {
     setError("");
@@ -328,12 +314,6 @@ export default function Home() {
   const tasks = mission?.tasks ?? [];
   const openTasks = tasks.filter((t) => t.status !== "completed");
   const completedTasks = tasks.filter((t) => t.status === "completed");
-  const elapsedSec = running
-    ? Math.max(0, Math.floor((now - new Date(running.startedAt).getTime()) / 1000))
-    : 0;
-  const elapsedLabel = `${String(Math.floor(elapsedSec / 60)).padStart(2, "0")}:${String(
-    elapsedSec % 60
-  ).padStart(2, "0")}`;
   const doneMinutes = day?.stats.focusMinutes ?? 0;
   const taskProgress = day?.stats.taskPct ?? 0;
 
@@ -816,145 +796,6 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Focus timer — the gold card */}
-          <Card
-            id="focus"
-            className="border-primary bg-primary text-primary-foreground shadow-xl shadow-primary/20"
-          >
-            <CardHeader className="pb-2">
-              <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">
-                {running
-                  ? "Focusing now"
-                  : isToday
-                    ? "Pomodoro timer"
-                    : `Focus on ${selectedLabel}`}
-              </CardDescription>
-              <CardTitle className="font-display text-5xl font-semibold tracking-tight tabular-nums">
-                {running
-                  ? elapsedLabel
-                  : isToday
-                    ? `${fMinutes.padStart(2, "0")}:00`
-                    : `${doneMinutes} min`}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {running ? (
-                <>
-                  <p className="text-sm text-primary-foreground/80">
-                    {running.plannedMinutes} min planned
-                    {running.taskId
-                      ? ` · ${tasks.find((t) => t.id === running.taskId)?.title ?? ""}`
-                      : ""}
-                  </p>
-                  <div className="grid gap-2">
-                    <Label htmlFor="f-out" className="text-primary-foreground/80">
-                      Outcome note
-                    </Label>
-                    <Textarea
-                      id="f-out"
-                      value={fOutcome}
-                      onChange={(e) => setFOutcome(e.target.value)}
-                      placeholder="What happened in this session?"
-                      className="border-black/20 bg-black/10 text-primary-foreground placeholder:text-primary-foreground/50"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="secondary"
-                      onClick={() =>
-                        run(async () => {
-                          await api(
-                            `/api/focus-sessions/${running.id}/finish`,
-                            {
-                              method: "POST",
-                              body: JSON.stringify({
-                                status: "completed",
-                                outcome: fOutcome || null,
-                              }),
-                            }
-                          );
-                          setFOutcome("");
-                        })
-                      }
-                    >
-                      Finish
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="border-black/25 bg-transparent text-primary-foreground hover:bg-black/10 hover:text-primary-foreground"
-                      onClick={() =>
-                        run(async () => {
-                          await api(
-                            `/api/focus-sessions/${running.id}/finish`,
-                            {
-                              method: "POST",
-                              body: JSON.stringify({
-                                status: "interrupted",
-                                interruptionNote: fOutcome || null,
-                              }),
-                            }
-                          );
-                          setFOutcome("");
-                        })
-                      }
-                    >
-                      Interrupted
-                    </Button>
-                  </div>
-                </>
-              ) : !isToday ? (
-                <p className="text-sm text-primary-foreground/80">
-                  {day?.stats.sessionsCompleted ?? 0} completed ·{" "}
-                  {day?.stats.sessionsInterrupted ?? 0} interrupted ·{" "}
-                  {day?.stats.plannedMinutes ?? 0} min planned. The timer only
-                  runs on today.
-                </p>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <select
-                      className="flex h-9 flex-1 rounded-md border border-black/20 bg-transparent px-3 text-sm text-primary-foreground [&>option]:text-black"
-                      value={fTaskId}
-                      onChange={(e) => setFTaskId(e.target.value)}
-                    >
-                      <option value="">No task (quick start)</option>
-                      {openTasks.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.title}
-                        </option>
-                      ))}
-                    </select>
-                    <Input
-                      className="w-18 border-black/20 bg-transparent text-primary-foreground"
-                      type="number"
-                      min={1}
-                      value={fMinutes}
-                      onChange={(e) => setFMinutes(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    variant="secondary"
-                    disabled={!mission || loading}
-                    onClick={() =>
-                      run(async () => {
-                        const s: Session = await api("/api/focus-sessions/start", {
-                          method: "POST",
-                          body: JSON.stringify({
-                            taskId: fTaskId || null,
-                            plannedMinutes: Number(fMinutes),
-                          }),
-                        });
-                        if (s.taskId) setFTaskId(s.taskId);
-                      })
-                    }
-                  >
-                    Start focus
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Handoff */}
           <Card className={GLASS}>
             <CardHeader className="pb-2">
@@ -993,7 +834,7 @@ export default function Home() {
               {sessions.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   {isToday
-                    ? "No sessions yet. Start the first one above."
+                    ? "No recorded focus sessions yet."
                     : "No focus sessions on this day."}
                 </p>
               )}
