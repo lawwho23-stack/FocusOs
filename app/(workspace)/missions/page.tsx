@@ -49,7 +49,7 @@ export default function MissionsPage() {
           <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">My <span className="text-primary">missions</span></h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">What you want your life to stand for. Write your mission, then take it one meaningful step at a time.</p>
         </div>
-        <Button disabled={adding || loading || !!error} onClick={() => { setAdding(true); setNotice(""); }}><Plus />Add mission</Button>
+        <Button disabled={adding || loading} onClick={() => { setAdding(true); setNotice(""); }}><Plus />Add mission</Button>
       </header>
       {notice && <p role="status" className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">{notice}</p>}
       {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-destructive/10 p-4"><p className="text-sm text-destructive">{error}</p><Button variant="outline" onClick={() => void load()}>Retry</Button></div>}

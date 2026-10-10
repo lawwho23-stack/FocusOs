@@ -10,7 +10,8 @@ export async function GET(_req: Request, { params }: Context) {
   try {
     const mission = await db.lifeMission.findUnique({ where: { id } });
     return mission ? Response.json(mission) : Response.json({ error: "Mission not found. Your draft is kept." }, { status: 404 });
-  } catch {
+  } catch (error) {
+    console.error(`GET /api/life-missions/${id} failed:`, error);
     return Response.json({ error: "Could not load the saved mission. Your draft is kept; please try again." }, { status: 500 });
   }
 }
@@ -38,6 +39,7 @@ export async function PATCH(req: Request, { params }: Context) {
           : "Mission not found. Your draft is kept." }, { status: existing ? 409 : 404 });
       } catch { /* A failed conflict lookup is still a database outage. */ }
     }
+    console.error(`PATCH /api/life-missions/${id} failed:`, error);
     return Response.json({ error: "Could not update your mission. Your draft is still here; please try again." }, { status: 500 });
   }
 }
@@ -48,6 +50,7 @@ export async function DELETE(_req: Request, { params }: Context) {
     await db.lifeMission.delete({ where: { id } });
     return Response.json({ deleted: true });
   } catch (error) {
+    console.error(`DELETE /api/life-missions/${id} failed:`, error);
     return Response.json({ error: isMissing(error) ? "Mission not found." : "Could not delete your mission. Please try again." }, { status: isMissing(error) ? 404 : 500 });
   }
 }
