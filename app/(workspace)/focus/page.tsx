@@ -120,11 +120,7 @@ export default function FocusHistoryPage() {
       {data && data.days.length === 0 && (
         <Card className={GLASS}>
           <CardContent className="py-6 text-sm text-muted-foreground">
-            No focus sessions in the last {range} days. Start one on{" "}
-            <Link href="/" className="text-primary underline">
-              My day
-            </Link>
-            .
+            No recorded focus sessions in the last {range} days.
           </CardContent>
         </Card>
       )}
